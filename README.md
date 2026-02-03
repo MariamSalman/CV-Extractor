@@ -76,6 +76,3 @@ docker run -p 5000:5000 --env-file .env cv-extractor
 - **PDF Generation**: Tectonic (LaTeX)
 - **Frontend**: Vanilla HTML/CSS/JS
 
-## License
-
-MIT
