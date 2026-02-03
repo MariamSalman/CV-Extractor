@@ -286,6 +286,23 @@ def generate_pdf():
         # Enforce schema & sanitize/escape for LaTeX
         safe_data = sanitize_data(ensure_schema(data))
         lang = safe_data.get('language', 'fr')
+        
+        # Filter out empty entries
+        safe_data['skills'] = [s for s in safe_data.get('skills', []) if s and s.strip()]
+        safe_data['experience'] = [
+            exp for exp in safe_data.get('experience', [])
+            if (exp.get('role') and exp['role'].strip()) or (exp.get('company') and exp['company'].strip())
+        ]
+        safe_data['education'] = [
+            edu for edu in safe_data.get('education', [])
+            if (edu.get('degree') and edu['degree'].strip()) or (edu.get('school') and edu['school'].strip())
+        ]
+        # Filter empty details within entries
+        for exp in safe_data['experience']:
+            exp['details'] = [d for d in exp.get('details', []) if d and d.strip()]
+        for edu in safe_data['education']:
+            edu['details'] = [d for d in edu.get('details', []) if d and d.strip()]
+        
         rendered_tex = template.render(
             personal_info=safe_data['personal_info'],
             education=safe_data['education'],

@@ -124,6 +124,44 @@
             padding: 12px;
             margin-bottom: 12px;
             background: rgba(255,255,255,0.02);
+            position: relative;
+        }
+        .btn-delete {
+            background: #dc2626;
+            border: none;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+        .btn-delete:hover { background: #b91c1c; }
+        .btn-delete-item {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+        }
+        .detail-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .detail-row input {
+            flex: 1;
+        }
+        .btn-small {
+            padding: 8px 12px;
+            font-size: 12px;
+            width: auto;
+            display: inline-block;
+            margin-right: 6px;
         }
         .pdf-frame {
             width: 100%;
@@ -314,30 +352,61 @@
 
     function renderArray(containerId, arrayData, fields, detailKey) {
         const container = document.getElementById(containerId);
+        const dataKey = containerId === 'experience-list' ? 'experience' : 'education';
         container.innerHTML = '';
+        
         arrayData.forEach((item, index) => {
             let html = `<div class="array-item">`;
+            html += `<button type="button" class="btn-delete btn-delete-item" onclick="removeItem('${dataKey}', ${index})" title="Remove">✕</button>`;
+            
             fields.forEach(field => {
-                html += `<label>${field}:</label> <input type="text" class="${containerId}-input" data-index="${index}" data-field="${field}" value="${item[field] || ''}"><br>`;
+                html += `<label>${field}:</label> <input type="text" class="${containerId}-input" data-index="${index}" data-field="${field}" value="${escapeHtml(item[field] || '')}"><br>`;
             });
+            
             if (detailKey && Array.isArray(item[detailKey])) {
                 html += `<label>details:</label>`;
                 item[detailKey].forEach((d, di) => {
-                    html += `<input type="text" class="${containerId}-detail" data-index="${index}" data-dindex="${di}" value="${d || ''}" style="margin-bottom:6px;">`;
+                    html += `<div class="detail-row">
+                        <input type="text" class="${containerId}-detail" data-index="${index}" data-dindex="${di}" value="${escapeHtml(d || '')}">
+                        <button type="button" class="btn-delete" onclick="removeDetail('${dataKey}', ${index}, ${di})" title="Remove">✕</button>
+                    </div>`;
                 });
-                html += `<button type="button" class="btn" style="margin-top:6px;" onclick="addDetail('${containerId}', ${index}, '${detailKey}')">+ Add detail</button>`;
+                html += `<button type="button" class="btn btn-small" style="margin-top:6px;" onclick="addDetail('${containerId}', ${index}, '${detailKey}')">+ Add detail</button>`;
             }
             html += `</div>`;
             container.innerHTML += html;
         });
     }
 
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML.replace(/"/g, '&quot;');
+    }
+
     function addDetail(containerId, idx, detailKey) {
-        cvData[containerId === 'experience-list' ? 'experience' : 'education'][idx][detailKey].push('');
-        renderArray(containerId, cvData[containerId === 'experience-list' ? 'experience' : 'education'], containerId === 'experience-list' ? ['role','company','period'] : ['degree','school','period'], 'details');
+        const dataKey = containerId === 'experience-list' ? 'experience' : 'education';
+        harvestArrayData(); // Save current edits first
+        cvData[dataKey][idx][detailKey].push('');
+        renderArray(containerId, cvData[dataKey], containerId === 'experience-list' ? ['role','company','period'] : ['degree','school','period'], 'details');
+    }
+
+    function removeDetail(dataKey, itemIdx, detailIdx) {
+        harvestArrayData(); // Save current edits first
+        cvData[dataKey][itemIdx].details.splice(detailIdx, 1);
+        const containerId = dataKey === 'experience' ? 'experience-list' : 'education-list';
+        renderArray(containerId, cvData[dataKey], dataKey === 'experience' ? ['role','company','period'] : ['degree','school','period'], 'details');
+    }
+
+    function removeItem(dataKey, index) {
+        harvestArrayData(); // Save current edits first
+        cvData[dataKey].splice(index, 1);
+        const containerId = dataKey === 'experience' ? 'experience-list' : 'education-list';
+        renderArray(containerId, cvData[dataKey], dataKey === 'experience' ? ['role','company','period'] : ['degree','school','period'], 'details');
     }
 
     function addItem(kind) {
+        harvestArrayData(); // Save current edits first
         if (kind === 'experience') {
             cvData.experience.push({period:'', role:'', company:'', details:['']});
             renderArray('experience-list', cvData.experience, ['role','company','period'], 'details');
@@ -345,6 +414,28 @@
             cvData.education.push({period:'', degree:'', school:'', details:['']});
             renderArray('education-list', cvData.education, ['degree','school','period'], 'details');
         }
+    }
+
+    function harvestArrayData() {
+        ['experience-list', 'education-list'].forEach(listId => {
+            const dataKey = listId === 'experience-list' ? 'experience' : 'education';
+            const inputs = document.querySelectorAll(`.${listId}-input`);
+            inputs.forEach(input => {
+                const idx = parseInt(input.dataset.index);
+                const field = input.dataset.field;
+                if (cvData[dataKey][idx]) {
+                    cvData[dataKey][idx][field] = input.value;
+                }
+            });
+            const detailInputs = document.querySelectorAll(`.${listId}-detail`);
+            detailInputs.forEach(input => {
+                const idx = parseInt(input.dataset.index);
+                const dindex = parseInt(input.dataset.dindex);
+                if (cvData[dataKey][idx] && cvData[dataKey][idx].details) {
+                    cvData[dataKey][idx].details[dindex] = input.value;
+                }
+            });
+        });
     }
 
     async function generatePDF() {
@@ -358,31 +449,36 @@
             cvData.personal_info[key] = document.getElementById(`p-${key}`).value;
         }
 
-        // Update Skills
-        cvData.skills = document.getElementById('skills-field').value.split(',').map(s => s.trim());
+        // Update Skills - filter empty
+        cvData.skills = document.getElementById('skills-field').value
+            .split(',')
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
 
-        // Update Arrays (Exp/Edu) - Simplistic harvesting
-        // Note: For a real app, you'd need more robust array harvesting logic here
-        // to map the inputs back to the cvData object structure correctly.
-        // For now, we rely on the user not adding/removing array items, just editing.
-        
-        ['experience-list', 'education-list'].forEach(listId => {
-            const dataKey = listId === 'experience-list' ? 'experience' : 'education';
-            const inputs = document.querySelectorAll(`.${listId}-input`);
-            inputs.forEach(input => {
-                const idx = input.dataset.index;
-                const field = input.dataset.field;
-                cvData[dataKey][idx][field] = input.value;
-            });
-            const detailInputs = document.querySelectorAll(`.${listId}-detail`);
-            detailInputs.forEach(input => {
-                const idx = input.dataset.index;
-                const dindex = input.dataset.dindex;
-                cvData[dataKey][idx]['details'][dindex] = input.value;
+        // Update Arrays
+        harvestArrayData();
+
+        // 2. Clean up empty entries
+        // Filter out empty details within each item
+        ['experience', 'education'].forEach(key => {
+            cvData[key].forEach(item => {
+                if (item.details) {
+                    item.details = item.details.filter(d => d && d.trim().length > 0);
+                }
             });
         });
 
-        // 2. Send to Backend
+        // Filter out empty experience entries (no role AND no company)
+        cvData.experience = cvData.experience.filter(exp => 
+            (exp.role && exp.role.trim()) || (exp.company && exp.company.trim())
+        );
+
+        // Filter out empty education entries (no degree AND no school)
+        cvData.education = cvData.education.filter(edu => 
+            (edu.degree && edu.degree.trim()) || (edu.school && edu.school.trim())
+        );
+
+        // 3. Send to Backend
         try {
             const response = await fetch('/generate-pdf', {
                 method: 'POST',
