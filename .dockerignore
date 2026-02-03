@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.git/
+.gitignore
+venv/
+*.log
+*.aux
+*.out
+smart_cv_app/output/
+static/uploads/*.pdf

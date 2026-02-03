@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart CV Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0b1021;
+            --panel: #0f162c;
+            --card: rgba(18, 25, 46, 0.92);
+            --accent: #7c3aed;
+            --accent-2: #06b6d4;
+            --muted: #9ca3af;
+            --border: #1f2937;
+            --shadow: 0 25px 60px rgba(0,0,0,0.45);
+            --radius: 18px;
+            --glow: 0 0 0 1px rgba(124,58,237,0.28), 0 25px 80px rgba(6,182,212,0.18);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            background:
+                radial-gradient(120% 120% at 20% 15%, rgba(124,58,237,0.17), transparent 40%),
+                radial-gradient(110% 110% at 85% 10%, rgba(6,182,212,0.18), transparent 38%),
+                radial-gradient(130% 130% at 50% 120%, rgba(255,255,255,0.05), transparent 45%),
+                var(--bg);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            color: #e5e7eb;
+            min-height: 100vh;
+        }
+        .shell {
+            max-width: 1200px;
+            margin: 48px auto 80px;
+            padding: 0 32px;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        .logo {
+            width: 50px; height: 50px;
+            border-radius: 16px;
+            background: linear-gradient(145deg, var(--accent), var(--accent-2));
+            display: grid; place-items: center;
+            font-weight: 800; color: #0b1021; letter-spacing: -0.5px;
+            box-shadow: 0 14px 34px rgba(124,58,237,0.35);
+        }
+        h1 { margin: 0; font-size: 25px; letter-spacing: -0.35px; color: #e5e7eb; }
+        p.lead { margin: 6px 0 0; color: #cbd5e1; font-size: 14px; }
+        .grid {
+            display: grid;
+            grid-template-columns: 1.05fr 1fr;
+            gap: 18px;
+            align-items: stretch;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid rgba(124,58,237,0.12);
+            border-radius: var(--radius);
+            padding: 20px;
+            box-shadow: var(--glow);
+            backdrop-filter: blur(10px);
+        }
+        .card h3 { margin: 0 0 10px; font-size: 16px; letter-spacing: -0.2px; color: #e5e7eb; }
+        .card small { color: #a5b4fc; }
+        .drop {
+            border: 1px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 22px;
+            background: linear-gradient(160deg, rgba(255,255,255,0.04), rgba(124,58,237,0.04));
+            text-align: center;
+            transition: border-color .2s, background .2s, transform .1s;
+            color: #e5e7eb;
+        }
+        .drop:hover { border-color: var(--accent); background: rgba(124,58,237,0.08); transform: translateY(-1px); }
+        input[type="file"] { display: none; }
+        .btn {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            border: none;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            transition: transform .1s ease, box-shadow .2s ease;
+            box-shadow: 0 12px 25px rgba(59,130,246,0.25);
+        }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+        .btn:hover:not(:disabled) { transform: translateY(-1px); }
+        label { display: block; font-weight: 600; margin: 10px 0 6px; color: #e5e7eb; }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: #0b1021;
+            color: #e5e7eb;
+            font-size: 14px;
+        }
+        textarea { min-height: 100px; resize: vertical; }
+        .pill {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 6px 10px; border-radius: 999px;
+            background: rgba(59,130,246,0.12); color: #bfdbfe;
+            font-weight: 600; font-size: 12px; letter-spacing: 0.2px;
+        }
+        .stepper {
+            display: flex; gap: 8px; margin-bottom: 14px; align-items: center;
+            font-size: 13px; color: var(--muted);
+        }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #1f2937; }
+        .dot.active { background: var(--accent); box-shadow: 0 0 0 4px rgba(59,130,246,0.18); }
+        .array-item {
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+            background: rgba(255,255,255,0.02);
+        }
+        .pdf-frame {
+            width: 100%;
+            height: 520px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            background: #0b1021;
+        }
+        .pdf-frame iframe { width: 100%; height: 100%; border: none; }
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .section-title { margin: 16px 0 8px; font-size: 15px; letter-spacing: -0.1px; }
+        .status { margin-top: 10px; color: var(--muted); font-size: 13px; }
+        .loader { display: inline-flex; align-items: center; gap: 8px; color: #bfdbfe; }
+        .spinner {
+            width: 16px; height: 16px; border-radius: 50%;
+            border: 2px solid rgba(59,130,246,0.2);
+            border-top-color: #60a5fa;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+            .shell { margin-top: 28px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="shell">
+    <header>
+        <div class="logo">CV</div>
+        <div>
+            <h1>Smart CV Generator</h1>
+            <p class="lead">Upload your CV, review extracted fields, then download the polished PDF.</p>
+        </div>
+    </header>
+
+    <div class="grid">
+        <div class="card">
+            <div class="stepper">
+                <span class="dot active"></span><span>Upload</span>
+                <span class="dot"></span><span>Review</span>
+                <span class="dot"></span><span>Export</span>
+            </div>
+            <h3>Upload CV (PDF)</h3>
+            <label class="pill" for="cvFile">Select file</label>
+            <div class="drop" onclick="document.getElementById('cvFile').click()">
+                <p id="file-label">Drop PDF here or click to browse</p>
+                <small>PDF only. We keep it local.</small>
+            </div>
+            <input type="file" id="cvFile" accept=".pdf">
+            <div class="status" id="status-text">Ready.</div>
+            <button class="btn" id="analyze-btn" onclick="uploadFiles()">Analyze & Extract</button>
+        </div>
+
+        <div class="card">
+            <h3>Preview</h3>
+            <small>We’ll show extracted fields to edit before export.</small>
+            <div style="margin-top:12px; border:1px dashed #1f2937; border-radius:12px; padding:12px;">
+                <div class="loader" id="loading-msg" style="display:none;">
+                    <div class="spinner"></div> Processing your CV...
+                </div>
+                <div id="preview-hint" style="color:var(--muted); font-size:13px;">Nothing to preview yet.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" id="step-edit" style="margin-top:18px; display:none;">
+        <div class="stepper">
+            <span class="dot"></span><span>Upload</span>
+            <span class="dot active"></span><span>Review</span>
+            <span class="dot"></span><span>Export</span>
+        </div>
+        <h3>Review & Edit</h3>
+        <small>Fix anything the AI missed. Required fields are highlighted.</small>
+        
+        <form id="cvForm">
+            <div class="section-title">Language</div>
+            <div style="margin-bottom: 12px;">
+                <label style="display: inline; margin-right: 16px;">
+                    <input type="radio" name="language" value="en" id="lang-en"> English
+                </label>
+                <label style="display: inline;">
+                    <input type="radio" name="language" value="fr" id="lang-fr"> French
+                </label>
+                <small style="display: block; color: var(--muted); margin-top: 4px;">Auto-detected from your CV. Change if needed.</small>
+            </div>
+
+            <div class="section-title">Personal Info</div>
+            <div id="personal-fields" class="two-col"></div>
+
+            <div class="section-title">Skills</div>
+            <textarea id="skills-field" rows="3" placeholder="e.g., Python, Data Analysis, Leadership"></textarea>
+            <small style="color:var(--muted);">Separate by commas.</small>
+
+            <div class="section-title">Experience</div>
+            <div id="experience-list"></div>
+            <button type="button" class="btn" style="margin-top:8px;" onclick="addItem('experience')">+ Add Experience</button>
+
+            <div class="section-title">Education</div>
+            <div id="education-list"></div>
+            <button type="button" class="btn" style="margin-top:8px;" onclick="addItem('education')">+ Add Education</button>
+        </form>
+
+        <button class="btn" style="margin-top:14px;" onclick="generatePDF()">Generate Final PDF</button>
+    </div>
+
+    <div class="card" id="pdf-card" style="margin-top:18px; display:none;">
+        <div class="stepper">
+            <span class="dot"></span><span>Upload</span>
+            <span class="dot"></span><span>Review</span>
+            <span class="dot active"></span><span>Export</span>
+        </div>
+        <h3>Generated PDF</h3>
+        <small>The file opens inline. Download triggers automatically.</small>
+        <div class="pdf-frame" style="margin-top:10px;">
+            <iframe id="pdf-frame" title="Generated CV PDF"></iframe>
+        </div>
+    </div>
+</div>
+
+<script>
+    let cvData = {}; // Global store for the data
+
+    async function uploadFiles() {
+        const cvFile = document.getElementById('cvFile').files[0];
+        
+        if (!cvFile) {
+            alert("Please select a CV PDF.");
+            return;
+        }
+
+        document.getElementById('loading-msg').style.display = 'block';
+        document.getElementById('status-text').textContent = 'Processing your CV...';
+        
+        const formData = new FormData();
+        formData.append('cv_file', cvFile);
+
+        try {
+            const response = await fetch('/parse-cv', { method: 'POST', body: formData });
+            const data = await response.json();
+            
+            if (data.error) throw new Error(data.error);
+
+            cvData = data;
+            populateForm(data);
+            
+            document.getElementById('step-edit').style.display = 'block';
+            document.querySelectorAll('.dot')[1].classList.add('active');
+        } catch (err) {
+            alert("Error: " + err.message);
+        } finally {
+            document.getElementById('loading-msg').style.display = 'none';
+            document.getElementById('status-text').textContent = 'Ready.';
+        }
+    }
+
+    function populateForm(data) {
+        // 0. Set detected language
+        const lang = data.language || 'fr';
+        document.getElementById('lang-en').checked = (lang === 'en');
+        document.getElementById('lang-fr').checked = (lang === 'fr');
+
+        // 1. Personal Info
+        const pContainer = document.getElementById('personal-fields');
+        pContainer.innerHTML = '';
+        for (const [key, value] of Object.entries(data.personal_info)) {
+            if (key === 'photo_path') continue; // Don't edit the path
+            pContainer.innerHTML += `
+                <div class="form-group">
+                    <label>${key.toUpperCase()}</label>
+                    <input type="text" id="p-${key}" value="${value || ''}" placeholder="Missing info...">
+                </div>`;
+        }
+
+        // 2. Skills
+        document.getElementById('skills-field').value = data.skills.join(', ');
+
+        // 3. Experience ( Simplified for demo: just renders raw JSON text for details)
+        renderArray('experience-list', data.experience, ['role', 'company', 'period'], 'details');
+        
+        // 4. Education
+        renderArray('education-list', data.education, ['degree', 'school', 'period'], 'details');
+
+        document.getElementById('preview-hint').textContent = 'Fields loaded. Review and export when ready.';
+    }
+
+    function renderArray(containerId, arrayData, fields, detailKey) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = '';
+        arrayData.forEach((item, index) => {
+            let html = `<div class="array-item">`;
+            fields.forEach(field => {
+                html += `<label>${field}:</label> <input type="text" class="${containerId}-input" data-index="${index}" data-field="${field}" value="${item[field] || ''}"><br>`;
+            });
+            if (detailKey && Array.isArray(item[detailKey])) {
+                html += `<label>details:</label>`;
+                item[detailKey].forEach((d, di) => {
+                    html += `<input type="text" class="${containerId}-detail" data-index="${index}" data-dindex="${di}" value="${d || ''}" style="margin-bottom:6px;">`;
+                });
+                html += `<button type="button" class="btn" style="margin-top:6px;" onclick="addDetail('${containerId}', ${index}, '${detailKey}')">+ Add detail</button>`;
+            }
+            html += `</div>`;
+            container.innerHTML += html;
+        });
+    }
+
+    function addDetail(containerId, idx, detailKey) {
+        cvData[containerId === 'experience-list' ? 'experience' : 'education'][idx][detailKey].push('');
+        renderArray(containerId, cvData[containerId === 'experience-list' ? 'experience' : 'education'], containerId === 'experience-list' ? ['role','company','period'] : ['degree','school','period'], 'details');
+    }
+
+    function addItem(kind) {
+        if (kind === 'experience') {
+            cvData.experience.push({period:'', role:'', company:'', details:['']});
+            renderArray('experience-list', cvData.experience, ['role','company','period'], 'details');
+        } else if (kind === 'education') {
+            cvData.education.push({period:'', degree:'', school:'', details:['']});
+            renderArray('education-list', cvData.education, ['degree','school','period'], 'details');
+        }
+    }
+
+    async function generatePDF() {
+        // 1. Harvest Data from Inputs
+        // Update Language
+        cvData.language = document.querySelector('input[name="language"]:checked').value;
+
+        // Update Personal Info
+        for (const [key, value] of Object.entries(cvData.personal_info)) {
+            if (key === 'photo_path') continue;
+            cvData.personal_info[key] = document.getElementById(`p-${key}`).value;
+        }
+
+        // Update Skills
+        cvData.skills = document.getElementById('skills-field').value.split(',').map(s => s.trim());
+
+        // Update Arrays (Exp/Edu) - Simplistic harvesting
+        // Note: For a real app, you'd need more robust array harvesting logic here
+        // to map the inputs back to the cvData object structure correctly.
+        // For now, we rely on the user not adding/removing array items, just editing.
+        
+        ['experience-list', 'education-list'].forEach(listId => {
+            const dataKey = listId === 'experience-list' ? 'experience' : 'education';
+            const inputs = document.querySelectorAll(`.${listId}-input`);
+            inputs.forEach(input => {
+                const idx = input.dataset.index;
+                const field = input.dataset.field;
+                cvData[dataKey][idx][field] = input.value;
+            });
+            const detailInputs = document.querySelectorAll(`.${listId}-detail`);
+            detailInputs.forEach(input => {
+                const idx = input.dataset.index;
+                const dindex = input.dataset.dindex;
+                cvData[dataKey][idx]['details'][dindex] = input.value;
+            });
+        });
+
+        // 2. Send to Backend
+        try {
+            const response = await fetch('/generate-pdf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cvData)
+            });
+
+            if (!response.ok) throw new Error("Generation failed");
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+
+            // show inline
+            const pdfCard = document.getElementById('pdf-card');
+            const frame = document.getElementById('pdf-frame');
+            if (pdfCard && frame) {
+                pdfCard.style.display = 'block';
+                frame.src = url;
+            }
+
+            // download with person name
+            const filename = (cvData.personal_info.name || 'My_Smart_CV')
+                .replace(/[^a-z0-9-_ ]/gi,'')
+                .trim() || 'My_Smart_CV';
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${filename}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+
+            // stepper final dot
+            const dots = document.querySelectorAll('.dot');
+            if (dots[2]) dots[2].classList.add('active');
+        } catch (err) {
+            alert("Error generating PDF: " + err.message);
+        }
+    }
+</script>
+
+</body>
+</html>
