@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Smart CV Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0b1021;
+            --panel: #0f162c;
+            --card: rgba(18, 25, 46, 0.92);
+            --accent: #7c3aed;
+            --accent-2: #06b6d4;
+            --muted: #9ca3af;
+            --border: #1f2937;
+            --radius: 18px;
+            --glow: 0 0 0 1px rgba(124,58,237,0.28), 0 25px 80px rgba(6,182,212,0.18);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            background:
+                radial-gradient(120% 120% at 20% 15%, rgba(124,58,237,0.17), transparent 40%),
+                radial-gradient(110% 110% at 85% 10%, rgba(6,182,212,0.18), transparent 38%),
+                radial-gradient(130% 130% at 50% 120%, rgba(255,255,255,0.05), transparent 45%),
+                var(--bg);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            color: #e5e7eb;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-container {
+            width: 100%;
+            max-width: 400px;
+            padding: 0 20px;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid rgba(124,58,237,0.12);
+            border-radius: var(--radius);
+            padding: 40px 32px;
+            box-shadow: var(--glow);
+            backdrop-filter: blur(10px);
+            text-align: center;
+        }
+        .logo {
+            width: 60px; height: 60px;
+            border-radius: 16px;
+            background: linear-gradient(145deg, var(--accent), var(--accent-2));
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 20px;
+            color: #0b1021;
+            letter-spacing: -0.5px;
+            box-shadow: 0 14px 34px rgba(124,58,237,0.35);
+            margin-bottom: 20px;
+        }
+        h1 {
+            margin: 0 0 8px;
+            font-size: 24px;
+            letter-spacing: -0.35px;
+            color: #e5e7eb;
+        }
+        p {
+            margin: 0 0 28px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+        .error {
+            background: rgba(220, 38, 38, 0.15);
+            border: 1px solid rgba(220, 38, 38, 0.3);
+            color: #fca5a5;
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        input[type="password"] {
+            width: 100%;
+            padding: 14px 16px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: #0b1021;
+            color: #e5e7eb;
+            font-size: 15px;
+            margin-bottom: 16px;
+            transition: border-color 0.2s;
+        }
+        input[type="password"]:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        input[type="password"]::placeholder {
+            color: var(--muted);
+        }
+        .btn {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            border: none;
+            color: white;
+            padding: 14px 20px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.1s ease, box-shadow 0.2s ease;
+            box-shadow: 0 12px 25px rgba(59,130,246,0.25);
+        }
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="card">
+            <div class="logo">CV</div>
+            <h1>Smart CV Generator</h1>
+            <p>Enter password to access the application</p>
+            
+            {% if error %}
+            <div class="error">{{ error }}</div>
+            {% endif %}
+            
+            <form method="POST">
+                <input type="password" name="password" placeholder="Enter password" required autofocus>
+                <button type="submit" class="btn">Login</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,8 +1,10 @@
 import os
 import json
 import subprocess
+import secrets
 import jinja2
-from flask import Flask, request, jsonify, send_file, render_template
+from functools import wraps
+from flask import Flask, request, jsonify, send_file, render_template, session, redirect, url_for
 from werkzeug.utils import secure_filename
 from openai import OpenAI
 from PyPDF2 import PdfReader
@@ -17,6 +19,18 @@ STATIC_DIR = os.path.join(BASE_DIR, 'static')
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
+app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))
+
+# --- PASSWORD PROTECTION ---
+APP_PASSWORD = os.getenv("APP_PASSWORD", "").strip()
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if APP_PASSWORD and not session.get('authenticated'):
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # --- CONFIGURATION ---
 UPLOAD_FOLDER = os.path.join(STATIC_DIR, 'uploads')
@@ -187,11 +201,33 @@ Respond with ONLY the complete LaTeX code."""
 
 # --- ROUTES ---
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if not APP_PASSWORD:
+        return redirect(url_for('index'))
+    
+    error = None
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if password == APP_PASSWORD:
+            session['authenticated'] = True
+            return redirect(url_for('index'))
+        error = 'Invalid password'
+    
+    return render_template('login.html', error=error)
+
+@app.route('/logout')
+def logout():
+    session.pop('authenticated', None)
+    return redirect(url_for('login'))
+
 @app.route('/')
+@login_required
 def index():
     return render_template('index.html')
 
 @app.route('/parse-cv', methods=['POST'])
+@login_required
 def parse_cv():
     """
     1. Saves the uploaded CV.
@@ -270,6 +306,7 @@ Return ONLY valid JSON.
 
 
 @app.route('/generate-pdf', methods=['POST'])
+@login_required
 def generate_pdf():
     """
     1. Receives the Finalized JSON from Frontend.
@@ -344,4 +381,5 @@ def generate_pdf():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    debug_mode = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    app.run(debug=debug_mode, host='0.0.0.0', port=5000)

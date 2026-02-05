@@ -91,11 +91,13 @@
 \blue{\textbf{\textbullet\ \ \VAR{edu.period}}} &
 \textbf{\VAR{edu.degree}}\\[-0.1em]
 \muted{\textbf{\ \ \ \VAR{edu.school}}} &
+\BLOCK{ if edu.details and edu.details|length > 0 }
 \begin{itemize}
     \BLOCK{ for detail in edu.details }
     \item \VAR{detail}
     \BLOCK{ endfor }
 \end{itemize}
+\BLOCK{ endif }
 \\[-0.35em]
 \BLOCK{ endfor }
 \end{tabularx}
@@ -123,11 +125,13 @@
 \blue{\textbf{\textbullet\ \ \VAR{exp.period}}} &
 \textbf{\VAR{exp.role}}\\[-0.1em]
 \muted{\textbf{\ \ \ \VAR{exp.company}}} &
+\BLOCK{ if exp.details and exp.details|length > 0 }
 \begin{itemize}
     \BLOCK{ for detail in exp.details }
     \item \VAR{detail}
     \BLOCK{ endfor }
 \end{itemize}
+\BLOCK{ endif }
 \\[-0.35em]
 \BLOCK{ endfor }
 \end{tabularx}

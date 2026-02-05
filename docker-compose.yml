@@ -1,0 +1,10 @@
+services:
+  cv-extractor:
+    build: .
+    ports:
+      - "5001:5000"
+    env_file:
+      - .env
+    volumes:
+      - ./smart_cv_app/output:/app/smart_cv_app/output
+    restart: unless-stopped

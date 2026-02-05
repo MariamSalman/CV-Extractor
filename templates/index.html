@@ -267,7 +267,10 @@
             <button type="button" class="btn" style="margin-top:8px;" onclick="addItem('education')">+ Add Education</button>
         </form>
 
-        <button class="btn" style="margin-top:14px;" onclick="generatePDF()">Generate Final PDF</button>
+        <button class="btn" style="margin-top:14px;" id="generate-btn" onclick="generatePDF()">Generate Final PDF</button>
+        <div class="loader" id="pdf-loading-msg" style="display:none; margin-top:12px;">
+            <div class="spinner"></div> Generating your PDF... This may take a moment.
+        </div>
     </div>
 
     <div class="card" id="pdf-card" style="margin-top:18px; display:none;">
@@ -439,6 +442,14 @@
     }
 
     async function generatePDF() {
+        const generateBtn = document.getElementById('generate-btn');
+        const loadingMsg = document.getElementById('pdf-loading-msg');
+        
+        // Show loader and disable button
+        generateBtn.disabled = true;
+        generateBtn.textContent = 'Generating...';
+        loadingMsg.style.display = 'flex';
+
         // 1. Harvest Data from Inputs
         // Update Language
         cvData.language = document.querySelector('input[name="language"]:checked').value;
@@ -515,6 +526,11 @@
             if (dots[2]) dots[2].classList.add('active');
         } catch (err) {
             alert("Error generating PDF: " + err.message);
+        } finally {
+            // Hide loader and re-enable button
+            generateBtn.disabled = false;
+            generateBtn.textContent = 'Generate Final PDF';
+            loadingMsg.style.display = 'none';
         }
     }
 </script>
