@@ -163,15 +163,15 @@
             display: inline-block;
             margin-right: 6px;
         }
-        .pdf-frame {
-            width: 100%;
-            height: 520px;
-            border: 1px solid var(--border);
+        .success-box {
+            margin-top: 12px;
+            padding: 28px;
+            text-align: center;
+            border: 1px dashed #1f2937;
             border-radius: 12px;
-            overflow: hidden;
-            background: #0b1021;
         }
-        .pdf-frame iframe { width: 100%; height: 100%; border: none; }
+        .success-box .check { color: #10b981; font-size: 18px; font-weight: 600; }
+        .success-box .sub { color: var(--muted); font-size: 13px; margin-top: 6px; }
         .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .section-title { margin: 16px 0 8px; font-size: 15px; letter-spacing: -0.1px; }
         .status { margin-top: 10px; color: var(--muted); font-size: 13px; }
@@ -196,7 +196,7 @@
         <div class="logo">CV</div>
         <div>
             <h1>Smart CV Generator</h1>
-            <p class="lead">Upload your CV, review extracted fields, then download the polished PDF.</p>
+            <p class="lead">Upload your CV, review extracted fields, then download the polished Word document.</p>
         </div>
     </header>
 
@@ -207,20 +207,20 @@
                 <span class="dot"></span><span>Review</span>
                 <span class="dot"></span><span>Export</span>
             </div>
-            <h3>Upload CV (PDF)</h3>
+            <h3>Upload CV</h3>
             <label class="pill" for="cvFile">Select file</label>
             <div class="drop" onclick="document.getElementById('cvFile').click()">
-                <p id="file-label">Drop PDF here or click to browse</p>
-                <small>PDF only. We keep it local.</small>
+                <p id="file-label">Drop your CV here or click to browse</p>
+                <small>Accepts PDF, DOC, and DOCX files.</small>
             </div>
-            <input type="file" id="cvFile" accept=".pdf">
+            <input type="file" id="cvFile" accept=".pdf,.doc,.docx">
             <div class="status" id="status-text">Ready.</div>
             <button class="btn" id="analyze-btn" onclick="uploadFiles()">Analyze & Extract</button>
         </div>
 
         <div class="card">
             <h3>Preview</h3>
-            <small>We’ll show extracted fields to edit before export.</small>
+            <small>We'll show extracted fields to edit before export.</small>
             <div style="margin-top:12px; border:1px dashed #1f2937; border-radius:12px; padding:12px;">
                 <div class="loader" id="loading-msg" style="display:none;">
                     <div class="spinner"></div> Processing your CV...
@@ -237,7 +237,7 @@
             <span class="dot"></span><span>Export</span>
         </div>
         <h3>Review & Edit</h3>
-        <small>Fix anything the AI missed. Required fields are highlighted.</small>
+        <small>Fix anything the AI missed. The output CV will be anonymized automatically (initials, company phone & email).</small>
         
         <form id="cvForm">
             <div class="section-title">Language</div>
@@ -267,34 +267,65 @@
             <button type="button" class="btn" style="margin-top:8px;" onclick="addItem('education')">+ Add Education</button>
         </form>
 
-        <button class="btn" style="margin-top:14px;" id="generate-btn" onclick="generatePDF()">Generate Final PDF</button>
+        <button class="btn" style="margin-top:14px;" id="generate-btn" onclick="generateCV()">Generate Final CV</button>
         <div class="loader" id="pdf-loading-msg" style="display:none; margin-top:12px;">
-            <div class="spinner"></div> Generating your PDF... This may take a moment.
+            <div class="spinner"></div> Generating your Word document... This may take a moment.
         </div>
     </div>
 
-    <div class="card" id="pdf-card" style="margin-top:18px; display:none;">
+    <div class="card" id="result-card" style="margin-top:18px; display:none;">
         <div class="stepper">
             <span class="dot"></span><span>Upload</span>
             <span class="dot"></span><span>Review</span>
             <span class="dot active"></span><span>Export</span>
         </div>
-        <h3>Generated PDF</h3>
-        <small>The file opens inline. Download triggers automatically.</small>
-        <div class="pdf-frame" style="margin-top:10px;">
-            <iframe id="pdf-frame" title="Generated CV PDF"></iframe>
+        <h3>Generated CV</h3>
+        <small>Your anonymized CV has been generated and downloaded.</small>
+        <div class="success-box">
+            <p class="check">&#10003; CV Generated Successfully</p>
+            <p class="sub">The Word document (.docx) has been downloaded automatically.</p>
+            <button class="btn" style="margin-top:14px; width:auto; padding:10px 24px;" onclick="downloadAgain()">Download Again</button>
         </div>
     </div>
 </div>
 
 <script>
     let cvData = {}; // Global store for the data
+    let lastBlobUrl = null;
+    let lastFilename = '';
+
+    // --- Anonymization preview (mirrors backend logic) ---
+    const COMPANY_PHONE = '+33 6 62 54 45 33';
+    const COMPANY_EMAIL = 'servicecommercial@ntrace-consulting.com';
+    const ANON_FIELDS = new Set(['name', 'phone', 'email']);
+
+    function anonymizeName(name) {
+        const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+        if (parts.length >= 2) return parts[0][0].toUpperCase() + ' .' + parts[parts.length - 1][0].toUpperCase() + ' .';
+        if (parts.length === 1) return parts[0][0].toUpperCase() + ' .';
+        return name;
+    }
+
+    function anonValue(key, raw) {
+        if (key === 'name')  return anonymizeName(raw);
+        if (key === 'phone') return COMPANY_PHONE;
+        if (key === 'email') return COMPANY_EMAIL;
+        return raw;
+    }
+
+    // Show selected filename
+    document.getElementById('cvFile').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            document.getElementById('file-label').textContent = file.name;
+        }
+    });
 
     async function uploadFiles() {
         const cvFile = document.getElementById('cvFile').files[0];
         
         if (!cvFile) {
-            alert("Please select a CV PDF.");
+            alert("Please select a CV file (PDF, DOC, or DOCX).");
             return;
         }
 
@@ -334,17 +365,22 @@
         pContainer.innerHTML = '';
         for (const [key, value] of Object.entries(data.personal_info)) {
             if (key === 'photo_path') continue; // Don't edit the path
+            const isAnon = ANON_FIELDS.has(key);
+            const display = isAnon ? anonValue(key, value) : (value || '');
+            const label = isAnon ? key.toUpperCase() + ' (anonymized)' : key.toUpperCase();
+            const readOnly = isAnon ? 'disabled' : '';
+            const style = isAnon ? 'style="opacity:0.65; cursor:not-allowed;"' : '';
             pContainer.innerHTML += `
                 <div class="form-group">
-                    <label>${key.toUpperCase()}</label>
-                    <input type="text" id="p-${key}" value="${value || ''}" placeholder="Missing info...">
+                    <label>${label}</label>
+                    <input type="text" id="p-${key}" value="${escapeHtml(display)}" placeholder="Missing info..." ${readOnly} ${style}>
                 </div>`;
         }
 
         // 2. Skills
         document.getElementById('skills-field').value = data.skills.join(', ');
 
-        // 3. Experience ( Simplified for demo: just renders raw JSON text for details)
+        // 3. Experience
         renderArray('experience-list', data.experience, ['role', 'company', 'period'], 'details');
         
         // 4. Education
@@ -360,7 +396,7 @@
         
         arrayData.forEach((item, index) => {
             let html = `<div class="array-item">`;
-            html += `<button type="button" class="btn-delete btn-delete-item" onclick="removeItem('${dataKey}', ${index})" title="Remove">✕</button>`;
+            html += `<button type="button" class="btn-delete btn-delete-item" onclick="removeItem('${dataKey}', ${index})" title="Remove">&#10005;</button>`;
             
             fields.forEach(field => {
                 html += `<label>${field}:</label> <input type="text" class="${containerId}-input" data-index="${index}" data-field="${field}" value="${escapeHtml(item[field] || '')}"><br>`;
@@ -371,7 +407,7 @@
                 item[detailKey].forEach((d, di) => {
                     html += `<div class="detail-row">
                         <input type="text" class="${containerId}-detail" data-index="${index}" data-dindex="${di}" value="${escapeHtml(d || '')}">
-                        <button type="button" class="btn-delete" onclick="removeDetail('${dataKey}', ${index}, ${di})" title="Remove">✕</button>
+                        <button type="button" class="btn-delete" onclick="removeDetail('${dataKey}', ${index}, ${di})" title="Remove">&#10005;</button>
                     </div>`;
                 });
                 html += `<button type="button" class="btn btn-small" style="margin-top:6px;" onclick="addDetail('${containerId}', ${index}, '${detailKey}')">+ Add detail</button>`;
@@ -441,7 +477,7 @@
         });
     }
 
-    async function generatePDF() {
+    async function generateCV() {
         const generateBtn = document.getElementById('generate-btn');
         const loadingMsg = document.getElementById('pdf-loading-msg');
         
@@ -454,9 +490,9 @@
         // Update Language
         cvData.language = document.querySelector('input[name="language"]:checked').value;
 
-        // Update Personal Info
+        // Update Personal Info (skip anonymized read-only fields — originals stay in cvData)
         for (const [key, value] of Object.entries(cvData.personal_info)) {
-            if (key === 'photo_path') continue;
+            if (key === 'photo_path' || ANON_FIELDS.has(key)) continue;
             cvData.personal_info[key] = document.getElementById(`p-${key}`).value;
         }
 
@@ -491,7 +527,7 @@
 
         // 3. Send to Backend
         try {
-            const response = await fetch('/generate-pdf', {
+            const response = await fetch('/generate-docx', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(cvData)
@@ -502,35 +538,49 @@
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
 
-            // show inline
-            const pdfCard = document.getElementById('pdf-card');
-            const frame = document.getElementById('pdf-frame');
-            if (pdfCard && frame) {
-                pdfCard.style.display = 'block';
-                frame.src = url;
-            }
+            // Store for "download again"
+            if (lastBlobUrl) window.URL.revokeObjectURL(lastBlobUrl);
+            lastBlobUrl = url;
 
-            // download with person name
-            const filename = (cvData.personal_info.name || 'My_Smart_CV')
-                .replace(/[^a-z0-9-_ ]/gi,'')
+            // Derive filename from person name
+            const rawName = (cvData.personal_info.name || 'My_Smart_CV')
+                .replace(/[^a-z0-9\-_ ]/gi, '')
                 .trim() || 'My_Smart_CV';
+            lastFilename = `${rawName}.docx`;
+
+            // Auto-download
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${filename}.pdf`;
+            a.download = lastFilename;
             document.body.appendChild(a);
             a.click();
             a.remove();
 
-            // stepper final dot
+            // Show result card
+            const resultCard = document.getElementById('result-card');
+            if (resultCard) resultCard.style.display = 'block';
+
+            // Stepper final dot
             const dots = document.querySelectorAll('.dot');
             if (dots[2]) dots[2].classList.add('active');
         } catch (err) {
-            alert("Error generating PDF: " + err.message);
+            alert("Error generating CV: " + err.message);
         } finally {
             // Hide loader and re-enable button
             generateBtn.disabled = false;
-            generateBtn.textContent = 'Generate Final PDF';
+            generateBtn.textContent = 'Generate Final CV';
             loadingMsg.style.display = 'none';
+        }
+    }
+
+    function downloadAgain() {
+        if (lastBlobUrl) {
+            const a = document.createElement('a');
+            a.href = lastBlobUrl;
+            a.download = lastFilename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
         }
     }
 </script>

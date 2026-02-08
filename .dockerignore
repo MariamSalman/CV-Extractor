@@ -7,7 +7,7 @@ __pycache__/
 .gitignore
 venv/
 *.log
-*.aux
-*.out
 smart_cv_app/output/
 static/uploads/*.pdf
+static/uploads/*.docx
+static/uploads/*.doc

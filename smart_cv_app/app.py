@@ -2,13 +2,15 @@ import os
 import json
 import subprocess
 import secrets
-import jinja2
+import copy
 from functools import wraps
 from flask import Flask, request, jsonify, send_file, render_template, session, redirect, url_for
 from werkzeug.utils import secure_filename
 from openai import OpenAI
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
+from docx import Document as DocxDocument
+from docxtpl import DocxTemplate
 
 # Resolve project paths relative to this file so Flask can find templates/static
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -35,9 +37,15 @@ def login_required(f):
 # --- CONFIGURATION ---
 UPLOAD_FOLDER = os.path.join(STATIC_DIR, 'uploads')
 OUTPUT_FOLDER = os.path.join(os.path.dirname(__file__), 'output')
-DEFAULT_PHOTO = os.path.relpath(os.path.join(STATIC_DIR, 'uploads', 'Picture1.jpg'), OUTPUT_FOLDER).replace('\\', '/')
+DEFAULT_PHOTO = os.path.join(STATIC_DIR, 'uploads', 'ntrace_logo.jpeg')
+ALLOWED_EXTENSIONS = {'.pdf', '.doc', '.docx'}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
+# --- ANONYMIZATION CONSTANTS ---
+# Update COMPANY_PHONE in your .env file to match your company's phone number.
+COMPANY_PHONE = os.getenv("COMPANY_PHONE", "+33 6 62 54 45 33")
+COMPANY_EMAIL = "servicecommercial@ntrace-consulting.com"
 
 # --- OPENAI API KEY ---
 raw_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_APIKEY")
@@ -47,94 +55,6 @@ OPENAI_API_KEY = raw_key
 if not OPENAI_API_KEY:
     raise RuntimeError("Set OPENAI_API_KEY in your environment before running the app.")
 client = OpenAI(api_key=OPENAI_API_KEY)
-
-# --- JINJA2 LATEX SETUP ---
-# We use custom delimiters to avoid clashing with LaTeX curly braces {}
-latex_jinja_env = jinja2.Environment(
-    block_start_string='\\BLOCK{',
-    block_end_string='}',
-    variable_start_string='\\VAR{',
-    variable_end_string='}',
-    comment_start_string='\\#{',
-    comment_end_string='}',
-    line_statement_prefix='%%',
-    line_comment_prefix='%#',
-    trim_blocks=True,
-    autoescape=False,
-    loader=jinja2.FileSystemLoader(BASE_DIR)
-)
-
-# --- LATEX ESCAPING HELPERS ---
-LATEX_REPLACEMENTS = {
-    '&': r'\&',
-    '%': r'\%',
-    '$': r'\$',
-    '#': r'\#',
-    '_': r'\_',
-    '{': r'\{',
-    '}': r'\}',
-    '~': r'\textasciitilde{}',
-    '^': r'\textasciicircum{}',
-}
-
-LIGATURE_MAP = {
-    'œ': 'oe',
-    'Œ': 'OE',
-}
-
-DASH_MAP = {
-    '–': '--',
-    '—': '--'
-}
-
-def latex_escape(text: str) -> str:
-    if text is None:
-        return ''
-    s = str(text)
-    # normalize dashes and ligatures
-    for k, v in DASH_MAP.items():
-        s = s.replace(k, v)
-    for k, v in LIGATURE_MAP.items():
-        s = s.replace(k, v)
-    # normalize curly quotes to straight
-    s = s.replace('’', "'").replace('“', '"').replace('”', '"').replace('‘', "'")
-    for k, v in LATEX_REPLACEMENTS.items():
-        s = s.replace(k, v)
-    return s
-
-def normalize_spacing(text: str) -> str:
-    if text is None:
-        return ''
-    s = str(text)
-    while '  ' in s:
-        s = s.replace('  ', ' ')
-    for token in ['-', '.', ',', '@']:
-        s = s.replace(f' {token}', token).replace(f'{token} ', token)
-    return s.strip()
-
-def sanitize_data(obj):
-    if isinstance(obj, dict):
-        return {k: sanitize_data(v) if k != 'photo_path' else v for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [sanitize_data(v) for v in obj]
-    if isinstance(obj, str):
-        return latex_escape(normalize_spacing(obj))
-    return obj
-
-def ensure_schema(data):
-    data = data or {}
-    pi = data.get('personal_info', {})
-    for key in ['name', 'title', 'email', 'phone', 'location', 'summary', 'photo_path']:
-        if key == 'photo_path':
-            pi.setdefault(key, DEFAULT_PHOTO)
-        else:
-            pi.setdefault(key, '')
-    data['personal_info'] = pi
-    data.setdefault('education', [])
-    data.setdefault('skills', [])
-    data.setdefault('experience', [])
-    data.setdefault('language', 'fr')
-    return data
 
 # --- LANGUAGE DETECTION ---
 FRENCH_KEYWORDS = {
@@ -160,7 +80,7 @@ def detect_language(text: str) -> str:
     return 'en' if en_score > fr_score else 'fr'
 
 def generate_summary(text: str, lang: str) -> str:
-    prompt = "Write a concise 2-3 sentence professional profile summary based on this CV. Language: " + ("English." if lang=='en' else "French.")
+    prompt = "Write a concise 2-3 sentence professional profile summary based on this CV. Language: " + ("English." if lang == 'en' else "French.")
     completion = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -172,40 +92,182 @@ def generate_summary(text: str, lang: str) -> str:
     )
     return completion.choices[0].message.content.strip()
 
-def polish_latex(tex: str, lang: str) -> str:
-    if lang == 'en':
-        instruction = """Review this LaTeX CV code and:
-1. Translate ALL French text to English (section headers, content, everything)
-2. Fix alignment and remove redundant blank lines
-3. Ensure lists are compact
-Respond with ONLY the complete LaTeX code."""
-    else:
-        instruction = """Review this LaTeX CV code and:
-1. Keep all text in French
-2. Fix alignment and remove redundant blank lines  
-3. Ensure lists are compact
-Respond with ONLY the complete LaTeX code."""
-    
-    completion = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": instruction},
-            {"role": "user", "content": tex}
-        ],
-        temperature=0,
-        max_tokens=4000
-    )
-    polished = completion.choices[0].message.content.strip()
-    polished = polished.replace("```latex", "").replace("```", "").strip()
-    return polished
+def ensure_schema(data):
+    data = data or {}
+    pi = data.get('personal_info', {})
+    for key in ['name', 'title', 'email', 'phone', 'location', 'summary', 'photo_path']:
+        if key == 'photo_path':
+            pi.setdefault(key, DEFAULT_PHOTO)
+        else:
+            pi.setdefault(key, '')
+    data['personal_info'] = pi
+    data.setdefault('education', [])
+    data.setdefault('skills', [])
+    data.setdefault('experience', [])
+    data.setdefault('language', 'fr')
+    return data
 
-# --- ROUTES ---
+
+# ──────────────────────────────────────────────
+#  TEXT EXTRACTION  (PDF / DOCX / DOC)
+# ──────────────────────────────────────────────
+
+def extract_text(filepath: str) -> str:
+    """Extract text from a CV file based on its extension."""
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == '.pdf':
+        return _extract_pdf(filepath)
+    elif ext == '.docx':
+        return _extract_docx(filepath)
+    elif ext == '.doc':
+        return _extract_doc(filepath)
+    else:
+        raise ValueError(f"Unsupported file format: {ext}")
+
+def _extract_pdf(filepath):
+    reader = PdfReader(filepath)
+    return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+def _extract_docx(filepath):
+    doc = DocxDocument(filepath)
+    parts = []
+    for para in doc.paragraphs:
+        parts.append(para.text)
+    # Also grab text that lives inside tables
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                parts.append(cell.text)
+    return "\n".join(parts)
+
+def _extract_doc(filepath):
+    """Extract text from legacy .doc files using antiword."""
+    try:
+        result = subprocess.run(
+            ['antiword', filepath],
+            capture_output=True, text=True, check=True
+        )
+        return result.stdout
+    except FileNotFoundError:
+        raise ValueError(
+            "Cannot process .doc files: 'antiword' is not installed. "
+            "Please convert your file to .docx or .pdf format."
+        )
+    except subprocess.CalledProcessError as e:
+        raise ValueError(f"Error reading .doc file: {e.stderr}")
+
+
+# ──────────────────────────────────────────────
+#  ANONYMIZATION
+# ──────────────────────────────────────────────
+
+def anonymize_data(data):
+    """Return an anonymized deep-copy of the CV data.
+
+    Rules:
+      - Name  → first-letter initials matching template format (e.g. "Fatima Jabari" → "F .J .")
+      - Phone → company phone number
+      - Email → company email address
+    """
+    anon = copy.deepcopy(data)
+    pi = anon.get('personal_info', {})
+
+    # Name → initials (template format: "M .G .")
+    name = pi.get('name', '').strip()
+    if name:
+        parts = name.split()
+        if len(parts) >= 2:
+            pi['name'] = f"{parts[0][0].upper()} .{parts[-1][0].upper()} ."
+        elif len(parts) == 1:
+            pi['name'] = f"{parts[0][0].upper()} ."
+
+    # Company contact info
+    pi['phone'] = COMPANY_PHONE
+    pi['email'] = COMPANY_EMAIL
+
+    anon['personal_info'] = pi
+    return anon
+
+
+# ──────────────────────────────────────────────
+#  WORD (.docx) DOCUMENT GENERATION
+#  Uses docxtpl to fill CV_TEMPLATE.docx (a Jinja2-ready
+#  version of the original template).  All formatting,
+#  icons, text-boxes and layout are preserved automatically.
+# ──────────────────────────────────────────────
+
+TEMPLATE_PATH = os.path.join(BASE_DIR, 'cv_samples', 'CV_TEMPLATE.docx')
+
+
+def build_cv_from_template(data, lang):
+    """Build a CV by rendering CV_TEMPLATE.docx with docxtpl.
+
+    The template uses two-column tables for education and experience,
+    so each entry passes separate period/degree/school or period/role/company
+    as plain strings.  Styling is handled by the template itself.
+    """
+    doc = DocxTemplate(TEMPLATE_PATH)
+    pi = data['personal_info']
+
+    # ── Education entries ─────────────────────
+    edu_entries = []
+    for edu in data.get('education', []):
+        if not (edu.get('degree') or edu.get('school')):
+            continue
+        edu_entries.append({
+            'period': edu.get('period', ''),
+            'degree': edu.get('degree', ''),
+            'school': edu.get('school', ''),
+            'details': [d for d in edu.get('details', []) if d and d.strip()],
+        })
+
+    # ── Experience entries ────────────────────
+    exp_entries = []
+    for exp in data.get('experience', []):
+        if not (exp.get('role') or exp.get('company')):
+            continue
+        exp_entries.append({
+            'period': exp.get('period', ''),
+            'role': exp.get('role', ''),
+            'company': exp.get('company', ''),
+            'details': [d for d in exp.get('details', []) if d and d.strip()],
+        })
+
+    # ── Skills ────────────────────────────────
+    skills = [s for s in data.get('skills', []) if s and s.strip()]
+
+    # ── Build context ─────────────────────────
+    context = {
+        'name':       pi.get('name', ''),
+        'title':      (pi.get('title') or '').upper(),
+        'email':      pi.get('email', ''),
+        'phone':      pi.get('phone', ''),
+        'location':   pi.get('location', ''),
+        'summary':    pi.get('summary', ''),
+        # Section headings
+        'education_title':  ('FORMATION - CERTIFICATION'
+                             if lang != 'en' else 'EDUCATION - CERTIFICATION'),
+        'skills_title':     'COMPETENCES' if lang != 'en' else 'SKILLS',
+        'experience_title': ('EXPÉRIENCES PROFESSIONNELLES'
+                             if lang != 'en' else 'PROFESSIONAL EXPERIENCE'),
+        # Section data
+        'education':  edu_entries,
+        'skills':     skills,
+        'experience': exp_entries,
+    }
+
+    doc.render(context)
+    return doc
+
+
+# ──────────────────────────────────────────────
+#  ROUTES
+# ──────────────────────────────────────────────
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if not APP_PASSWORD:
         return redirect(url_for('index'))
-    
     error = None
     if request.method == 'POST':
         password = request.form.get('password', '')
@@ -213,7 +275,6 @@ def login():
             session['authenticated'] = True
             return redirect(url_for('index'))
         error = 'Invalid password'
-    
     return render_template('login.html', error=error)
 
 @app.route('/logout')
@@ -229,34 +290,33 @@ def index():
 @app.route('/parse-cv', methods=['POST'])
 @login_required
 def parse_cv():
-    """
-    1. Saves the uploaded CV.
-    2. Extracts text and sends to OpenAI to produce structured JSON.
-    3. Returns JSON to frontend.
-    """
+    """Upload a CV (PDF / DOCX / DOC), extract text, call OpenAI, return JSON."""
     if 'cv_file' not in request.files:
         return jsonify({"error": "Missing CV file"}), 400
 
     cv_file = request.files['cv_file']
-
-    # Save file to disk
     cv_filename = secure_filename(cv_file.filename)
+    ext = os.path.splitext(cv_filename)[1].lower()
+
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify({
+            "error": f"Unsupported format '{ext}'. Please upload a PDF, DOC, or DOCX file."
+        }), 400
+
     cv_path = os.path.join(UPLOAD_FOLDER, cv_filename)
     cv_file.save(cv_path)
 
-    # --- Extract text from PDF ---
+    # --- Extract text ---
     try:
-        reader = PdfReader(cv_path)
-        raw_text = "\n".join([page.extract_text() or "" for page in reader.pages])
+        raw_text = extract_text(cv_path)
     except Exception as e:
-        print(f"PDF Read Error: {e}")
-        return jsonify({"error": "Could not read PDF text"}), 500
+        print(f"Text Extraction Error: {e}")
+        return jsonify({"error": str(e)}), 500
 
-    # --- CALL OPENAI API ---
+    # --- Call OpenAI ---
     try:
         target_lang = detect_language(raw_text)
-        prompt = f"""
-Extract data from this CV into this exact JSON structure. Respond in { 'English' if target_lang=='en' else 'French' } and translate content to that language if needed.
+        prompt = f"""Extract data from this CV into this exact JSON structure. Respond in { 'English' if target_lang=='en' else 'French' } and translate content to that language if needed.
 If a field is missing, use null. Do not shorten or summarize descriptions.
 Structure:
 {{
@@ -287,15 +347,15 @@ Return ONLY valid JSON.
         json_str = json_str.replace("```json", "").replace("```", "").strip()
         extracted_data = json.loads(json_str)
 
-        # Photo: use provided path if any, otherwise fall back to bundled Picture1.jpg
+        # Photo: use default bundled photo
         extracted_data['personal_info']['photo_path'] = DEFAULT_PHOTO
         extracted_data['language'] = target_lang
 
         # Ensure summary exists; if missing, ask model to draft one
         if not extracted_data['personal_info'].get('summary'):
             try:
-                extracted_data['personal_info']['summary'] = generate_summary(raw_text, extracted_data['language'])
-            except Exception as _:
+                extracted_data['personal_info']['summary'] = generate_summary(raw_text, target_lang)
+            except Exception:
                 extracted_data['personal_info']['summary'] = ''
 
         return jsonify(extracted_data)
@@ -305,80 +365,51 @@ Return ONLY valid JSON.
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/generate-pdf', methods=['POST'])
+@app.route('/generate-docx', methods=['POST'])
 @login_required
-def generate_pdf():
-    """
-    1. Receives the Finalized JSON from Frontend.
-    2. Renders LaTeX template.
-    3. Compiles PDF.
-    4. Sends PDF back to user.
-    """
+def generate_docx():
+    """Receive final JSON, anonymize, build Word document, return .docx."""
     data = request.json
-    
-    try:
-        # Load Template
-        template = latex_jinja_env.get_template('templates/cv_template.tex')
 
-        # Enforce schema & sanitize/escape for LaTeX
-        safe_data = sanitize_data(ensure_schema(data))
-        lang = safe_data.get('language', 'fr')
-        
-        # Filter out empty entries
-        safe_data['skills'] = [s for s in safe_data.get('skills', []) if s and s.strip()]
-        safe_data['experience'] = [
-            exp for exp in safe_data.get('experience', [])
+    try:
+        data = ensure_schema(data)
+        lang = data.get('language', 'fr')
+
+        # Filter empty entries
+        data['skills'] = [s for s in data.get('skills', []) if s and s.strip()]
+        data['experience'] = [
+            exp for exp in data.get('experience', [])
             if (exp.get('role') and exp['role'].strip()) or (exp.get('company') and exp['company'].strip())
         ]
-        safe_data['education'] = [
-            edu for edu in safe_data.get('education', [])
+        data['education'] = [
+            edu for edu in data.get('education', [])
             if (edu.get('degree') and edu['degree'].strip()) or (edu.get('school') and edu['school'].strip())
         ]
-        # Filter empty details within entries
-        for exp in safe_data['experience']:
+        for exp in data['experience']:
             exp['details'] = [d for d in exp.get('details', []) if d and d.strip()]
-        for edu in safe_data['education']:
+        for edu in data['education']:
             edu['details'] = [d for d in edu.get('details', []) if d and d.strip()]
-        
-        rendered_tex = template.render(
-            personal_info=safe_data['personal_info'],
-            education=safe_data['education'],
-            skills=safe_data['skills'],
-            experience=safe_data['experience'],
-            lang=lang
-        )
 
-        # Final polish via LLM - also handles translation if English
-        try:
-            rendered_tex = polish_latex(rendered_tex, lang)
-        except Exception as _:
-            pass
-        rendered_tex = rendered_tex.replace("```latex", "").replace("```", "").strip()
-        
-        # Save .tex file
-        tex_path = os.path.join(OUTPUT_FOLDER, "generated_cv.tex")
-        with open(tex_path, "w", encoding='utf-8') as f:
-            f.write(rendered_tex)
-            
-        # Compile PDF using tectonic (lighter dependency than full TeX Live)
-        # Tectonic auto-installs missing packages on first run.
-        subprocess.run(
-            [
-                "tectonic",
-                "-o",
-                OUTPUT_FOLDER,
-                "--keep-logs",
-                tex_path,
-            ],
-            check=True,
-        )
-        
-        pdf_path = os.path.join(OUTPUT_FOLDER, "generated_cv.pdf")
-        return send_file(pdf_path, as_attachment=True)
-        
+        # Anonymize personal info for the output document
+        anon_data = anonymize_data(data)
+
+        # Build Word document from template
+        doc = build_cv_from_template(anon_data, lang)
+
+        # Derive filename from anonymized initials
+        anon_name = anon_data['personal_info'].get('name', 'CV')
+        clean_name = ''.join(c for c in anon_name if c.isalnum() or c in (' ', '_')).strip().replace(' ', '_')
+        filename = f"CV_{clean_name}.docx" if clean_name else "generated_cv.docx"
+
+        docx_path = os.path.join(OUTPUT_FOLDER, "generated_cv.docx")
+        doc.save(docx_path)
+
+        return send_file(docx_path, as_attachment=True, download_name=filename)
+
     except Exception as e:
-        print(f"PDF Gen Error: {e}")
+        print(f"DOCX Gen Error: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     debug_mode = os.getenv("FLASK_DEBUG", "false").lower() == "true"

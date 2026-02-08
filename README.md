@@ -1,12 +1,15 @@
 # CV Extractor
 
-A web app that extracts structured data from PDF resumes using OpenAI and generates polished PDF CVs using LaTeX.
+A web app that extracts structured data from CVs using OpenAI and generates polished, anonymized Word (.docx) documents from a company-branded template.
 
 ## Features
 
-- Upload PDF resume → AI extracts structured data (personal info, education, skills, experience)
+- Upload CV in PDF, Word (.docx), or legacy Word (.doc) format
+- AI extracts structured data (personal info, education, skills, experience)
+- Automatic anonymization (initials for name, company phone/email)
 - Review and edit extracted fields in a web form
-- Generate professionally formatted PDF using LaTeX
+- Generate professionally formatted Word document matching the company template
+- Empty fields are automatically hidden (no blank icons or sections)
 - Bilingual support (English/French) with auto-detection
 - Password protection for secure access
 
@@ -15,15 +18,11 @@ A web app that extracts structured data from PDF resumes using OpenAI and genera
 ### Prerequisites
 
 - Python 3.11+
-- [Tectonic](https://tectonic-typesetting.github.io/) (LaTeX compiler)
 - OpenAI API key
 
 ### Local Setup
 
 ```bash
-# Install tectonic (macOS)
-brew install tectonic
-
 # Clone and setup
 git clone <repo-url>
 cd cv-extractor
@@ -190,13 +189,17 @@ certbot --nginx -d your-domain.com
 ```
 ├── smart_cv_app/
 │   ├── app.py              # Flask backend
-│   └── output/             # Generated PDFs
+│   └── output/             # Generated documents
 ├── templates/
 │   ├── index.html          # Main UI
-│   ├── login.html          # Login page
-│   └── cv_template.tex     # LaTeX template
-├── static/uploads/         # Uploaded files + default photo
-├── docker-compose.yml      # Docker Compose config
+│   └── login.html          # Login page
+├── cv_samples/
+│   └── CV_TEMPLATE.docx    # Company-branded Word template
+├── static/uploads/
+│   ├── icons/              # Template icons (email, phone, location, etc.)
+│   └── ntrace_logo.jpeg    # Default photo
+├── build_template.py       # One-time script to regenerate CV_TEMPLATE.docx
+├── docker-compose.yml
 ├── Dockerfile
 ├── requirements.txt
 └── .env.example
@@ -205,7 +208,7 @@ certbot --nginx -d your-domain.com
 ## Tech Stack
 
 - **Backend**: Flask, OpenAI API (gpt-4o-mini), PyPDF2
-- **PDF Generation**: Tectonic (LaTeX)
+- **Document Generation**: python-docx, docxtpl (Word template rendering)
 - **Frontend**: Vanilla HTML/CSS/JS
 - **Deployment**: Docker, Nginx, UFW, Fail2Ban
 

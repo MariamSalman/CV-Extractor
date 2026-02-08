@@ -15,19 +15,14 @@ venv/
 *.swp
 *.swo
 
-# LaTeX artifacts
-*.aux
-*.log
-*.out
-*.toc
-*.synctex.gz
-
 # Generated files
 smart_cv_app/output/*
 !smart_cv_app/output/.gitkeep
 
-# Uploaded files (keep default photo)
+# Uploaded files (user CVs)
 static/uploads/*.pdf
+static/uploads/*.docx
+static/uploads/*.doc
 
 # OS
 .DS_Store
