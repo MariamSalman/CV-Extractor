@@ -314,14 +314,22 @@ def index():
     return render_template('index.html')
 
 EXTRACTION_PROMPT = """\
-Extract data from this CV into this exact JSON structure. \
+Extract data from this CV into the JSON structure below. \
 Respond in {lang_instruction} and translate content to that language if needed.
 If a field is missing, use null. Do not shorten or summarize descriptions.
+
+Rules:
+- For "skills": respect the original structure of the CV. If skills are grouped \
+together on one line or under a category, keep them as a single item. Do not \
+break apart what the CV presents as one logical entry.
+- For all arrays: preserve the level of detail from the original. Do not split \
+one sentence into multiple items, and do not merge separate entries into one.
+
 Structure:
 {{
   "personal_info": {{ "name": "", "title": "", "email": "", "phone": "", "location": "", "summary": "" }},
   "education": [ {{ "period": "YYYY - YYYY", "degree": "", "school": "", "details": [""] }} ],
-  "skills": ["skill1", "skill2"],
+  "skills": ["skill or skill group 1", "skill or skill group 2"],
   "experience": [ {{ "period": "Month Year - Month Year", "role": "", "company": "", "details": [""] }} ]
 }}
 Return ONLY valid JSON.
@@ -381,6 +389,85 @@ def _call_openai_text(raw_text: str, target_lang: str) -> dict:
     return json.loads(json_str)
 
 
+# ──────────────────────────────────────────────
+#  CV ANALYSIS  (second LLM call)
+# ──────────────────────────────────────────────
+
+ANALYSIS_PROMPT = """\
+You are an expert CV reviewer. Analyse the following structured CV data and \
+return a JSON object with exactly these keys:
+
+1. "summary" — a concise 2-3 sentence professional summary of the candidate \
+(who they are, their main expertise, years/level of experience). Write in \
+{lang_instruction}.
+
+2. "missing_fields" — a list of field names that are empty, null, or missing. \
+Check these fields: name, title, email, phone, location, summary, education, \
+skills, experience. Only list the ones that are actually missing or empty.
+
+3. "suggestions" — an array of objects, one per missing or empty field for \
+which you can propose useful content. Each object must have:
+  - "field": the field name (e.g. "title", "summary", "location", "skills")
+  - "label": a short human-readable label for what this field is \
+(e.g. "Professional Title", "Profile Summary"). Write in {lang_instruction}.
+  - "value": your proposed content for that field. For text fields provide a \
+string. For "skills" provide a comma-separated string of skills.
+Special rule for "summary": if the summary field is empty, suggest a 1-2 line \
+professional profile description. Do NOT mention the candidate's name in it. \
+Focus on their expertise, role, and key strengths.
+Only include suggestions where you can infer reasonable content from the rest \
+of the CV. If nothing is missing or you cannot infer a value, return an empty list.
+
+4. "compact_skills" — look at the "skills" array. If the skills are already \
+compact (short phrases, keyword-style entries like "Python", "Project Management", \
+"Docker, Kubernetes"), set this to null. But if any skill entry is a long \
+sentence or paragraph (more than ~8 words), rewrite ALL the skills as a clean, \
+compact, professional keyword-style list. Group related skills logically. \
+Write in {lang_instruction}. If null, omit the key or set to null.
+
+CV Data:
+{cv_json}
+
+Return ONLY valid JSON matching the structure above.
+"""
+
+
+def _call_openai_analysis(cv_data: dict, target_lang: str) -> dict:
+    """Analyse extracted CV data and return summary, missing fields,
+    suggestions, and optionally compact skills."""
+    lang_instruction = 'English' if target_lang == 'en' else 'French'
+    # Remove photo_path from data sent to LLM (not useful for analysis)
+    send_data = copy.deepcopy(cv_data)
+    send_data.get('personal_info', {}).pop('photo_path', None)
+
+    prompt = ANALYSIS_PROMPT.format(
+        lang_instruction=lang_instruction,
+        cv_json=json.dumps(send_data, ensure_ascii=False, indent=2),
+    )
+
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a professional CV reviewer. Return only valid JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.2,
+    )
+    json_str = completion.choices[0].message.content
+    json_str = json_str.replace("```json", "").replace("```", "").strip()
+    try:
+        result = json.loads(json_str)
+    except json.JSONDecodeError:
+        result = {"summary": "", "missing_fields": [], "suggestions": [], "compact_skills": None}
+
+    # Normalise keys
+    result.setdefault("summary", "")
+    result.setdefault("missing_fields", [])
+    result.setdefault("suggestions", [])
+    result.setdefault("compact_skills", None)
+    return result
+
+
 @app.route('/parse-cv', methods=['POST'])
 @login_required
 def parse_cv():
@@ -424,15 +511,25 @@ def parse_cv():
         extracted_data['personal_info']['photo_path'] = DEFAULT_PHOTO
         extracted_data['language'] = target_lang
 
-        # Ensure summary exists; if missing, ask model to draft one
+        # If summary is missing, leave it empty — the analysis call
+        # will flag it as a missing field and suggest content the user
+        # can accept or dismiss.
         if not extracted_data['personal_info'].get('summary'):
-            try:
-                extracted_data['personal_info']['summary'] = generate_summary(
-                    raw_text, target_lang
-                )
-            except Exception:
-                extracted_data['personal_info']['summary'] = ''
+            extracted_data['personal_info']['summary'] = ''
 
+        # ── Second LLM call: CV analysis ──────────────
+        try:
+            analysis = _call_openai_analysis(extracted_data, target_lang)
+        except Exception as e:
+            print(f"Analysis call failed (non-fatal): {e}")
+            analysis = {
+                "summary": "",
+                "missing_fields": [],
+                "suggestions": [],
+                "compact_skills": None,
+            }
+
+        extracted_data['analysis'] = analysis
         return jsonify(extracted_data)
 
     except Exception as e:

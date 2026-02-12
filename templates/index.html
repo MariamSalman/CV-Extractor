@@ -9,290 +9,527 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #0b1021;
-            --panel: #0f162c;
-            --card: rgba(18, 25, 46, 0.92);
-            --accent: #7c3aed;
-            --accent-2: #06b6d4;
-            --muted: #9ca3af;
-            --border: #1f2937;
-            --shadow: 0 25px 60px rgba(0,0,0,0.45);
-            --radius: 18px;
-            --glow: 0 0 0 1px rgba(124,58,237,0.28), 0 25px 80px rgba(6,182,212,0.18);
+            --bg: #f4f6fb;
+            --card: #ffffff;
+            --accent: #2563eb;
+            --accent-light: #eff6ff;
+            --accent-2: #0891b2;
+            --muted: #64748b;
+            --text: #1e293b;
+            --text-light: #475569;
+            --border: #e2e8f0;
+            --border-light: #f1f5f9;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+            --shadow-lg: 0 10px 25px rgba(0,0,0,0.06), 0 4px 10px rgba(0,0,0,0.03);
+            --radius: 16px;
+            --radius-sm: 10px;
+            --success: #059669;
+            --success-bg: #ecfdf5;
+            --warning: #d97706;
+            --warning-bg: #fffbeb;
+            --info: #2563eb;
+            --info-bg: #eff6ff;
         }
-        * { box-sizing: border-box; }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            margin: 0;
-            padding: 0;
-            background:
-                radial-gradient(120% 120% at 20% 15%, rgba(124,58,237,0.17), transparent 40%),
-                radial-gradient(110% 110% at 85% 10%, rgba(6,182,212,0.18), transparent 38%),
-                radial-gradient(130% 130% at 50% 120%, rgba(255,255,255,0.05), transparent 45%),
-                var(--bg);
+            background: var(--bg);
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            color: #e5e7eb;
+            color: var(--text);
             min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
         }
-        .shell {
-            max-width: 1200px;
-            margin: 48px auto 80px;
-            padding: 0 32px;
-        }
-        header {
+
+        /* ── Top bar ─────────────────────────── */
+        .topbar {
+            background: #ffffff;
+            border-bottom: 1px solid var(--border);
+            padding: 14px 32px;
             display: flex;
             align-items: center;
             gap: 12px;
-            margin-bottom: 18px;
+            box-shadow: var(--shadow-sm);
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
-        .logo {
-            width: 50px; height: 50px;
-            border-radius: 16px;
-            background: linear-gradient(145deg, var(--accent), var(--accent-2));
+        .topbar-logo {
+            width: 36px; height: 36px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
             display: grid; place-items: center;
-            font-weight: 800; color: #0b1021; letter-spacing: -0.5px;
-            box-shadow: 0 14px 34px rgba(124,58,237,0.35);
+            font-weight: 800; font-size: 13px; color: #fff;
+            flex-shrink: 0;
         }
-        h1 { margin: 0; font-size: 25px; letter-spacing: -0.35px; color: #e5e7eb; }
-        p.lead { margin: 6px 0 0; color: #cbd5e1; font-size: 14px; }
+        .topbar h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+        .topbar p { font-size: 13px; color: var(--muted); margin: 0; }
+
+        /* ── Shell ───────────────────────────── */
+        .shell {
+            max-width: 1180px;
+            margin: 28px auto 80px;
+            padding: 0 24px;
+        }
+
+        /* ── Stepper ─────────────────────────── */
+        .stepper {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            margin-bottom: 24px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 24px;
+            box-shadow: var(--shadow-sm);
+        }
+        .step {
+            display: flex; align-items: center; gap: 10px;
+            flex: 1;
+            position: relative;
+        }
+        .step:not(:last-child)::after {
+            content: '';
+            flex: 1;
+            height: 2px;
+            background: var(--border);
+            margin: 0 16px;
+            border-radius: 2px;
+        }
+        .step:not(:last-child).done::after {
+            background: var(--accent);
+        }
+        .step-num {
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            background: var(--border-light);
+            border: 2px solid var(--border);
+            display: grid; place-items: center;
+            font-weight: 700; font-size: 13px; color: var(--muted);
+            flex-shrink: 0;
+            transition: all 0.3s ease;
+        }
+        .step.active .step-num {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+        .step.done .step-num {
+            background: var(--success);
+            border-color: var(--success);
+            color: #fff;
+        }
+        .step-label {
+            font-size: 13px; font-weight: 600; color: var(--muted);
+            white-space: nowrap;
+        }
+        .step.active .step-label { color: var(--accent); }
+        .step.done .step-label { color: var(--success); }
+
+        /* ── Grid ────────────────────────────── */
         .grid {
             display: grid;
-            grid-template-columns: 1.05fr 1fr;
-            gap: 18px;
-            align-items: stretch;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            align-items: start;
         }
+
+        /* ── Cards ───────────────────────────── */
         .card {
             background: var(--card);
-            border: 1px solid rgba(124,58,237,0.12);
+            border: 1px solid var(--border);
             border-radius: var(--radius);
-            padding: 20px;
-            box-shadow: var(--glow);
-            backdrop-filter: blur(10px);
+            padding: 24px;
+            box-shadow: var(--shadow);
         }
-        .card h3 { margin: 0 0 10px; font-size: 16px; letter-spacing: -0.2px; color: #e5e7eb; }
-        .card small { color: #a5b4fc; }
+        .card-title {
+            font-size: 15px; font-weight: 700; color: var(--text);
+            margin-bottom: 4px; display: flex; align-items: center; gap: 8px;
+        }
+        .card-subtitle {
+            font-size: 13px; color: var(--muted); margin-bottom: 16px;
+        }
+
+        /* ── Upload area ─────────────────────── */
         .drop {
-            border: 1px dashed var(--border);
-            border-radius: var(--radius);
-            padding: 22px;
-            background: linear-gradient(160deg, rgba(255,255,255,0.04), rgba(124,58,237,0.04));
+            border: 2px dashed var(--border);
+            border-radius: var(--radius-sm);
+            padding: 32px 20px;
             text-align: center;
-            transition: border-color .2s, background .2s, transform .1s;
-            color: #e5e7eb;
+            transition: border-color .2s, background .2s;
+            cursor: pointer;
+            background: var(--border-light);
         }
-        .drop:hover { border-color: var(--accent); background: rgba(124,58,237,0.08); transform: translateY(-1px); }
+        .drop:hover { border-color: var(--accent); background: var(--accent-light); }
+        .drop-icon { font-size: 32px; margin-bottom: 8px; }
+        .drop p { font-size: 14px; font-weight: 500; color: var(--text-light); }
+        .drop small { font-size: 12px; color: var(--muted); }
         input[type="file"] { display: none; }
+
+        /* ── Buttons ─────────────────────────── */
         .btn {
             background: linear-gradient(135deg, #2563eb, #1d4ed8);
-            border: none;
-            color: white;
-            padding: 12px 16px;
-            border-radius: 12px;
-            font-weight: 700;
-            cursor: pointer;
-            width: 100%;
-            transition: transform .1s ease, box-shadow .2s ease;
-            box-shadow: 0 12px 25px rgba(59,130,246,0.25);
+            border: none; color: white;
+            padding: 12px 20px; border-radius: var(--radius-sm);
+            font-weight: 600; font-size: 14px;
+            cursor: pointer; width: 100%;
+            transition: transform .1s, box-shadow .2s, opacity .2s;
+            box-shadow: 0 4px 12px rgba(37,99,235,0.2);
         }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
-        .btn:hover:not(:disabled) { transform: translateY(-1px); }
-        label { display: block; font-weight: 600; margin: 10px 0 6px; color: #e5e7eb; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+        .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(37,99,235,0.25); }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 10px 16px; border-radius: var(--radius-sm);
+            font-weight: 600; font-size: 13px;
+            cursor: pointer;
+            transition: all .15s;
+            box-shadow: none;
+            width: auto;
+        }
+        .btn-outline:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+        .btn-outline.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+        /* ── Form elements ───────────────────── */
+        label.form-label { display: block; font-weight: 600; font-size: 13px; margin: 12px 0 5px; color: var(--text-light); }
         input[type="text"], textarea {
             width: 100%;
             padding: 10px 12px;
-            border-radius: 10px;
+            border-radius: 8px;
             border: 1px solid var(--border);
-            background: #0b1021;
-            color: #e5e7eb;
+            background: #fff;
+            color: var(--text);
             font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.15s;
         }
-        textarea { min-height: 100px; resize: vertical; }
-        .pill {
-            display: inline-flex; align-items: center; gap: 8px;
-            padding: 6px 10px; border-radius: 999px;
-            background: rgba(59,130,246,0.12); color: #bfdbfe;
-            font-weight: 600; font-size: 12px; letter-spacing: 0.2px;
+        input[type="text"]:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,0.08); }
+        textarea { min-height: 80px; resize: vertical; }
+
+        /* ── Status / loader ─────────────────── */
+        .status { margin-top: 12px; color: var(--muted); font-size: 13px; }
+        .loader { display: inline-flex; align-items: center; gap: 8px; color: var(--accent); font-size: 14px; font-weight: 500; }
+        .spinner {
+            width: 18px; height: 18px; border-radius: 50%;
+            border: 2.5px solid rgba(37,99,235,0.15);
+            border-top-color: var(--accent);
+            animation: spin 0.7s linear infinite;
         }
-        .stepper {
-            display: flex; gap: 8px; margin-bottom: 14px; align-items: center;
-            font-size: 13px; color: var(--muted);
-        }
-        .dot { width: 8px; height: 8px; border-radius: 50%; background: #1f2937; }
-        .dot.active { background: var(--accent); box-shadow: 0 0 0 4px rgba(59,130,246,0.18); }
-        .array-item {
-            border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 12px;
-            padding: 12px;
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Analysis panel ──────────────────── */
+        .analysis-panel { display: none; }
+        .analysis-panel.visible { display: block; }
+        .analysis-section {
+            background: var(--border-light);
+            border-radius: var(--radius-sm);
+            padding: 16px;
             margin-bottom: 12px;
-            background: rgba(255,255,255,0.02);
+        }
+        .analysis-section:last-child { margin-bottom: 0; }
+        .analysis-section h4 {
+            font-size: 13px; font-weight: 700; color: var(--text);
+            margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+        }
+        .analysis-section p {
+            font-size: 13px; line-height: 1.6; color: var(--text-light);
+        }
+        .analysis-section ul {
+            list-style: none; padding: 0;
+        }
+        .analysis-section li {
+            font-size: 13px; color: var(--text-light);
+            padding: 4px 0 4px 20px;
+            position: relative;
+            line-height: 1.5;
+        }
+        .analysis-section li::before {
+            content: '';
+            position: absolute; left: 4px; top: 11px;
+            width: 6px; height: 6px; border-radius: 50%;
+        }
+        .missing-list li::before { background: var(--warning); }
+        .suggest-list li::before { background: var(--accent); }
+
+        /* ── Suggestion cards ────────────────── */
+        .suggestion-card {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 8px;
+        }
+        .suggestion-card:last-child { margin-bottom: 0; }
+        .suggestion-card .sg-label {
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            color: var(--accent); letter-spacing: 0.4px; margin-bottom: 4px;
+        }
+        .suggestion-card .sg-value {
+            font-size: 13px; color: var(--text-light); line-height: 1.5;
+            margin-bottom: 10px; white-space: pre-wrap;
+        }
+        .suggestion-card .sg-actions {
+            display: flex; gap: 8px;
+        }
+        .sg-btn {
+            padding: 5px 14px; border-radius: 6px; font-size: 12px;
+            font-weight: 600; cursor: pointer; border: none;
+            transition: opacity .15s;
+        }
+        .sg-btn:hover { opacity: 0.85; }
+        .sg-btn-apply {
+            background: var(--accent); color: #fff;
+        }
+        .sg-btn-dismiss {
+            background: var(--border-light); color: var(--muted);
+            border: 1px solid var(--border);
+        }
+        .suggestion-card.applied {
+            opacity: 0.5; pointer-events: none;
+        }
+        .suggestion-card.applied .sg-actions { display: none; }
+        .suggestion-card.applied .sg-label::after {
+            content: ' — Applied'; color: var(--success); text-transform: none;
+            font-weight: 600; letter-spacing: 0;
+        }
+        .suggestion-card.dismissed { display: none; }
+
+        .tag-missing {
+            display: inline-block;
+            background: var(--warning-bg);
+            color: var(--warning);
+            font-size: 12px; font-weight: 600;
+            padding: 3px 10px; border-radius: 20px;
+            margin: 2px 4px 2px 0;
+        }
+
+        /* ── Skills toggle ───────────────────── */
+        .skills-toggle-bar {
+            display: none;
+            background: var(--info-bg);
+            border: 1px solid #bfdbfe;
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            align-items: center;
+            gap: 12px;
+        }
+        .skills-toggle-bar.visible { display: flex; flex-wrap: wrap; }
+        .skills-toggle-bar p { font-size: 13px; color: var(--accent); font-weight: 500; flex: 1; min-width: 200px; }
+        .toggle-group {
+            display: flex; gap: 0; border-radius: 8px; overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .toggle-group .btn-outline { border-radius: 0; border: none; padding: 7px 14px; font-size: 12px; }
+        .toggle-group .btn-outline:first-child { border-right: 1px solid var(--border); }
+
+        /* ── Section title ───────────────────── */
+        .section-title {
+            font-size: 14px; font-weight: 700; color: var(--text);
+            margin: 20px 0 8px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .section-title:first-child { margin-top: 0; }
+
+        /* ── Array items ─────────────────────── */
+        .array-item {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            margin-bottom: 10px;
+            background: var(--border-light);
             position: relative;
         }
         .btn-delete {
-            background: #dc2626;
-            border: none;
-            color: white;
-            width: 24px;
-            height: 24px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-            margin-left: 6px;
-            vertical-align: middle;
+            background: #fee2e2; border: none;
+            color: #dc2626;
+            width: 26px; height: 26px; border-radius: 6px;
+            cursor: pointer; font-size: 13px;
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 0; margin-left: 6px; vertical-align: middle;
+            transition: background .15s;
         }
-        .btn-delete:hover { background: #b91c1c; }
-        .btn-delete-item {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-        }
-        .detail-row {
-            display: flex;
-            align-items: center;
-            margin-bottom: 6px;
-        }
-        .detail-row input {
-            flex: 1;
-        }
+        .btn-delete:hover { background: #fecaca; }
+        .btn-delete-item { position: absolute; top: 10px; right: 10px; }
+        .detail-row { display: flex; align-items: center; margin-bottom: 6px; }
+        .detail-row input { flex: 1; }
         .btn-small {
-            padding: 8px 12px;
-            font-size: 12px;
-            width: auto;
-            display: inline-block;
-            margin-right: 6px;
+            padding: 8px 14px; font-size: 12px;
+            width: auto; display: inline-block; margin-right: 6px;
         }
-        .success-box {
-            margin-top: 12px;
-            padding: 28px;
-            text-align: center;
-            border: 1px dashed #1f2937;
-            border-radius: 12px;
-        }
-        .success-box .check { color: #10b981; font-size: 18px; font-weight: 600; }
-        .success-box .sub { color: var(--muted); font-size: 13px; margin-top: 6px; }
         .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .section-title { margin: 16px 0 8px; font-size: 15px; letter-spacing: -0.1px; }
-        .status { margin-top: 10px; color: var(--muted); font-size: 13px; }
-        .loader { display: inline-flex; align-items: center; gap: 8px; color: #bfdbfe; }
-        .spinner {
-            width: 16px; height: 16px; border-radius: 50%;
-            border: 2px solid rgba(59,130,246,0.2);
-            border-top-color: #60a5fa;
-            animation: spin 0.8s linear infinite;
+
+        /* ── Success box ─────────────────────── */
+        .success-box {
+            margin-top: 16px; padding: 32px; text-align: center;
+            border: 1px solid #a7f3d0; border-radius: var(--radius-sm);
+            background: var(--success-bg);
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        .success-box .check { color: var(--success); font-size: 18px; font-weight: 700; }
+        .success-box .sub { color: var(--muted); font-size: 13px; margin-top: 8px; }
+
+        /* ── Language radio ───────────────────── */
+        .lang-selector {
+            display: flex; gap: 16px; margin-bottom: 14px;
+        }
+        .lang-selector label {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 14px; font-weight: 500; color: var(--text-light);
+            cursor: pointer;
+        }
+        .lang-selector input[type="radio"] { accent-color: var(--accent); }
+        .lang-hint { font-size: 12px; color: var(--muted); margin-top: -8px; margin-bottom: 14px; }
+
+        /* ── Responsive ──────────────────────── */
         @media (max-width: 900px) {
             .grid { grid-template-columns: 1fr; }
-            .shell { margin-top: 28px; }
+            .shell { margin-top: 20px; }
+            .stepper { flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; }
+            .step:not(:last-child)::after { display: none; }
         }
     </style>
 </head>
 <body>
 
-<div class="shell">
-    <header>
-        <div class="logo">CV</div>
-        <div>
-            <h1>Smart CV Generator</h1>
-            <p class="lead">Upload your CV, review extracted fields, then download the polished Word document.</p>
-        </div>
-    </header>
+<div class="topbar">
+    <div class="topbar-logo">CV</div>
+    <div>
+        <h1>Smart CV Generator</h1>
+        <p>Upload, review, and export polished CVs</p>
+    </div>
+</div>
 
+<div class="shell">
+    <!-- Stepper -->
+    <div class="stepper" id="main-stepper">
+        <div class="step active" id="step-indicator-1">
+            <div class="step-num">1</div>
+            <span class="step-label">Upload</span>
+        </div>
+        <div class="step" id="step-indicator-2">
+            <div class="step-num">2</div>
+            <span class="step-label">Review</span>
+        </div>
+        <div class="step" id="step-indicator-3">
+            <div class="step-num">3</div>
+            <span class="step-label">Export</span>
+        </div>
+    </div>
+
+    <!-- Row 1: Upload + AI Analysis -->
     <div class="grid">
         <div class="card">
-            <div class="stepper">
-                <span class="dot active"></span><span>Upload</span>
-                <span class="dot"></span><span>Review</span>
-                <span class="dot"></span><span>Export</span>
-            </div>
-            <h3>Upload CV</h3>
-            <label class="pill" for="cvFile">Select file</label>
-            <div class="drop" onclick="document.getElementById('cvFile').click()">
-                <p id="file-label">Drop your CV here or click to browse</p>
-                <small>Accepts PDF, DOC, and DOCX files.</small>
+            <div class="card-title">Upload CV</div>
+            <div class="card-subtitle">PDF, DOC, and DOCX supported</div>
+            <div class="drop" id="drop-zone" onclick="document.getElementById('cvFile').click()">
+                <div class="drop-icon">&#128196;</div>
+                <p id="file-label">Drop your file here or click to browse</p>
+                <small>Maximum recommended: 20 pages</small>
             </div>
             <input type="file" id="cvFile" accept=".pdf,.doc,.docx">
-            <div class="status" id="status-text">Ready.</div>
-            <button class="btn" id="analyze-btn" onclick="uploadFiles()">Analyze & Extract</button>
+            <div class="status" id="status-text">Ready</div>
+            <button class="btn" id="analyze-btn" onclick="uploadFiles()" style="margin-top: 14px;">Analyze CV</button>
         </div>
 
-        <div class="card">
-            <h3>Preview</h3>
-            <small>We'll show extracted fields to edit before export.</small>
-            <div style="margin-top:12px; border:1px dashed #1f2937; border-radius:12px; padding:12px;">
-                <div class="loader" id="loading-msg" style="display:none;">
-                    <div class="spinner"></div> Processing your CV...
+        <div class="card" id="analysis-card">
+            <div class="card-title">AI Analysis</div>
+            <div class="card-subtitle">We'll summarize the CV and highlight what needs attention.</div>
+
+            <div id="analysis-placeholder" style="color:var(--muted); font-size:13px; padding: 24px 0; text-align:center;">
+                Upload a CV to see AI-powered analysis.
+            </div>
+
+            <div class="loader" id="loading-msg" style="display:none; padding: 24px 0; justify-content:center;">
+                <div class="spinner"></div> Analysing your CV...
+            </div>
+
+            <div class="analysis-panel" id="analysis-panel">
+                <!-- Summary -->
+                <div class="analysis-section">
+                    <h4>&#128100; Candidate Summary</h4>
+                    <p id="analysis-summary"></p>
                 </div>
-                <div id="preview-hint" style="color:var(--muted); font-size:13px;">Nothing to preview yet.</div>
+                <!-- Missing Fields -->
+                <div class="analysis-section" id="analysis-missing-section" style="display:none;">
+                    <h4>&#9888;&#65039; Missing Information</h4>
+                    <div id="analysis-missing"></div>
+                </div>
+                <!-- Suggestions for missing fields -->
+                <div class="analysis-section" id="analysis-suggestions-section" style="display:none;">
+                    <h4>&#128161; Suggested Content for Missing Fields</h4>
+                    <div id="analysis-suggestions"></div>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="card" id="step-edit" style="margin-top:18px; display:none;">
-        <div class="stepper">
-            <span class="dot"></span><span>Upload</span>
-            <span class="dot active"></span><span>Review</span>
-            <span class="dot"></span><span>Export</span>
-        </div>
-        <h3>Review & Edit</h3>
-        <small>Fix anything the AI missed. The output CV will be anonymized automatically (initials, company phone & email).</small>
-        
+    <!-- Row 2: Review & Edit -->
+    <div class="card" id="step-edit" style="margin-top:20px; display:none;">
+        <div class="card-title">Review & Edit</div>
+        <div class="card-subtitle">Fix anything the AI missed. The output CV will be anonymized automatically (initials, company phone & email).</div>
+
         <form id="cvForm">
             <div class="section-title">Language</div>
-            <div style="margin-bottom: 12px;">
-                <label style="display: inline; margin-right: 16px;">
-                    <input type="radio" name="language" value="en" id="lang-en"> English
-                </label>
-                <label style="display: inline;">
-                    <input type="radio" name="language" value="fr" id="lang-fr"> French
-                </label>
-                <small style="display: block; color: var(--muted); margin-top: 4px;">Auto-detected from your CV. Change if needed.</small>
+            <div class="lang-selector">
+                <label><input type="radio" name="language" value="en" id="lang-en"> English</label>
+                <label><input type="radio" name="language" value="fr" id="lang-fr"> French</label>
             </div>
+            <div class="lang-hint">Auto-detected from your CV. Change if needed.</div>
 
             <div class="section-title">Personal Info</div>
             <div id="personal-fields" class="two-col"></div>
 
             <div class="section-title">Skills</div>
+            <div class="skills-toggle-bar" id="skills-toggle-bar">
+                <p>AI suggests more compact, professional skills for this CV.</p>
+                <div class="toggle-group">
+                    <button type="button" class="btn-outline active" id="btn-skills-original" onclick="toggleSkills('original')">Original</button>
+                    <button type="button" class="btn-outline" id="btn-skills-suggested" onclick="toggleSkills('suggested')">Suggested</button>
+                </div>
+            </div>
             <textarea id="skills-field" rows="3" placeholder="e.g., Python, Data Analysis, Leadership"></textarea>
-            <small style="color:var(--muted);">Separate by commas.</small>
+            <small style="color:var(--muted); font-size:12px;">Separate by commas or new lines.</small>
 
             <div class="section-title">Experience</div>
             <div id="experience-list"></div>
-            <button type="button" class="btn" style="margin-top:8px;" onclick="addItem('experience')">+ Add Experience</button>
+            <button type="button" class="btn btn-small" style="margin-top:8px; width:auto;" onclick="addItem('experience')">+ Add Experience</button>
 
             <div class="section-title">Education</div>
             <div id="education-list"></div>
-            <button type="button" class="btn" style="margin-top:8px;" onclick="addItem('education')">+ Add Education</button>
+            <button type="button" class="btn btn-small" style="margin-top:8px; width:auto;" onclick="addItem('education')">+ Add Education</button>
         </form>
 
-        <button class="btn" style="margin-top:14px;" id="generate-btn" onclick="generateCV()">Generate Final CV</button>
+        <button class="btn" style="margin-top:20px;" id="generate-btn" onclick="generateCV()">Generate Final CV</button>
         <div class="loader" id="pdf-loading-msg" style="display:none; margin-top:12px;">
-            <div class="spinner"></div> Generating your Word document... This may take a moment.
+            <div class="spinner"></div> Generating your Word document...
         </div>
     </div>
 
-    <div class="card" id="result-card" style="margin-top:18px; display:none;">
-        <div class="stepper">
-            <span class="dot"></span><span>Upload</span>
-            <span class="dot"></span><span>Review</span>
-            <span class="dot active"></span><span>Export</span>
-        </div>
-        <h3>Generated CV</h3>
-        <small>Your anonymized CV has been generated and downloaded.</small>
+    <!-- Row 3: Result -->
+    <div class="card" id="result-card" style="margin-top:20px; display:none;">
+        <div class="card-title">Export Complete</div>
+        <div class="card-subtitle">Your anonymized CV has been generated and downloaded.</div>
         <div class="success-box">
             <p class="check">&#10003; CV Generated Successfully</p>
             <p class="sub">The Word document (.docx) has been downloaded automatically.</p>
-            <button class="btn" style="margin-top:14px; width:auto; padding:10px 24px;" onclick="downloadAgain()">Download Again</button>
+            <button class="btn" style="margin-top:16px; width:auto; padding:10px 28px;" onclick="downloadAgain()">Download Again</button>
         </div>
     </div>
 </div>
 
 <script>
-    let cvData = {}; // Global store for the data
+    let cvData = {};
     let lastBlobUrl = null;
     let lastFilename = '';
+    let originalSkillsText = '';
+    let suggestedSkillsText = '';
+    let currentSkillsMode = 'original';
 
     // --- Anonymization preview (mirrors backend logic) ---
     const COMPANY_PHONE = '+33 6 62 54 45 33';
@@ -313,7 +550,25 @@
         return raw;
     }
 
-    // Show selected filename
+    // --- Stepper control ---
+    function setStep(n) {
+        for (let i = 1; i <= 3; i++) {
+            const el = document.getElementById('step-indicator-' + i);
+            el.classList.remove('active', 'done');
+            if (i < n) el.classList.add('done');
+            if (i === n) el.classList.add('active');
+        }
+        // Show check for done steps
+        document.querySelectorAll('.step.done .step-num').forEach(el => { el.textContent = '\u2713'; });
+        document.querySelectorAll('.step:not(.done) .step-num').forEach((el, idx) => {
+            // Restore number for non-done steps
+            const step = el.closest('.step');
+            const allSteps = [...document.querySelectorAll('.step')];
+            el.textContent = allSteps.indexOf(step) + 1;
+        });
+    }
+
+    // --- File selection display ---
     document.getElementById('cvFile').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (file) {
@@ -321,96 +576,232 @@
         }
     });
 
+    // --- Drag and drop ---
+    const dropZone = document.getElementById('drop-zone');
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = 'var(--accent)'; dropZone.style.background = 'var(--accent-light)'; });
+    dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = ''; dropZone.style.background = ''; });
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = ''; dropZone.style.background = '';
+        const file = e.dataTransfer.files[0];
+        if (file) {
+            const input = document.getElementById('cvFile');
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+            document.getElementById('file-label').textContent = file.name;
+        }
+    });
+
+    // --- Upload and parse ---
     async function uploadFiles() {
         const cvFile = document.getElementById('cvFile').files[0];
-        
-        if (!cvFile) {
-            alert("Please select a CV file (PDF, DOC, or DOCX).");
-            return;
-        }
+        if (!cvFile) { alert("Please select a CV file (PDF, DOC, or DOCX)."); return; }
 
-        document.getElementById('loading-msg').style.display = 'block';
-        document.getElementById('status-text').textContent = 'Processing your CV...';
-        
+        document.getElementById('loading-msg').style.display = 'flex';
+        document.getElementById('analysis-placeholder').style.display = 'none';
+        document.getElementById('analysis-panel').classList.remove('visible');
+        document.getElementById('status-text').textContent = 'Analysing your CV...';
+        document.getElementById('analyze-btn').disabled = true;
+
         const formData = new FormData();
         formData.append('cv_file', cvFile);
 
         try {
             const response = await fetch('/parse-cv', { method: 'POST', body: formData });
             const data = await response.json();
-            
             if (data.error) throw new Error(data.error);
 
             cvData = data;
             populateForm(data);
-            
+            populateAnalysis(data.analysis || {});
+
             document.getElementById('step-edit').style.display = 'block';
-            document.querySelectorAll('.dot')[1].classList.add('active');
+            setStep(2);
         } catch (err) {
             alert("Error: " + err.message);
+            document.getElementById('analysis-placeholder').style.display = 'block';
         } finally {
             document.getElementById('loading-msg').style.display = 'none';
-            document.getElementById('status-text').textContent = 'Ready.';
+            document.getElementById('status-text').textContent = 'Ready';
+            document.getElementById('analyze-btn').disabled = false;
         }
     }
 
+    // --- Populate analysis panel ---
+    function populateAnalysis(analysis) {
+        // Summary
+        document.getElementById('analysis-summary').textContent = analysis.summary || 'No summary available.';
+
+        // Missing fields
+        const missingSection = document.getElementById('analysis-missing-section');
+        const missingContainer = document.getElementById('analysis-missing');
+        missingContainer.innerHTML = '';
+        const missing = analysis.missing_fields || [];
+        if (missing.length > 0) {
+            missingSection.style.display = 'block';
+            missing.forEach(f => {
+                const tag = document.createElement('span');
+                tag.className = 'tag-missing';
+                tag.textContent = f;
+                missingContainer.appendChild(tag);
+            });
+        } else {
+            missingSection.style.display = 'none';
+        }
+
+        // Suggestions (structured: field, label, value)
+        const suggestSection = document.getElementById('analysis-suggestions-section');
+        const suggestContainer = document.getElementById('analysis-suggestions');
+        suggestContainer.innerHTML = '';
+        const suggestions = analysis.suggestions || [];
+        if (suggestions.length > 0) {
+            suggestSection.style.display = 'block';
+            suggestions.forEach((s, idx) => {
+                const card = document.createElement('div');
+                card.className = 'suggestion-card';
+                card.id = 'suggestion-' + idx;
+                card.innerHTML = `
+                    <div class="sg-label">${escapeHtml(s.label || s.field || '')}</div>
+                    <div class="sg-value">${escapeHtml(s.value || '')}</div>
+                    <div class="sg-actions">
+                        <button class="sg-btn sg-btn-apply" onclick="applySuggestion(${idx})">Apply</button>
+                        <button class="sg-btn sg-btn-dismiss" onclick="dismissSuggestion(${idx})">Keep Empty</button>
+                    </div>`;
+                card.dataset.field = s.field || '';
+                card.dataset.value = s.value || '';
+                suggestContainer.appendChild(card);
+            });
+        } else {
+            suggestSection.style.display = 'none';
+        }
+
+        // Compact skills toggle
+        const toggleBar = document.getElementById('skills-toggle-bar');
+        const cs = analysis.compact_skills;
+        if (cs && ((Array.isArray(cs) && cs.length > 0) || (typeof cs === 'string' && cs.trim()))) {
+            suggestedSkillsText = Array.isArray(cs) ? cs.join(', ') : cs;
+            toggleBar.classList.add('visible');
+        } else {
+            toggleBar.classList.remove('visible');
+        }
+
+        document.getElementById('analysis-panel').classList.add('visible');
+    }
+
+    // --- Skills toggle ---
+    function toggleSkills(mode) {
+        const field = document.getElementById('skills-field');
+        // Save current state before switching
+        if (currentSkillsMode === 'original') {
+            originalSkillsText = field.value;
+        } else {
+            suggestedSkillsText = field.value;
+        }
+
+        currentSkillsMode = mode;
+        document.getElementById('btn-skills-original').classList.toggle('active', mode === 'original');
+        document.getElementById('btn-skills-suggested').classList.toggle('active', mode === 'suggested');
+
+        if (mode === 'suggested') {
+            field.value = suggestedSkillsText;
+        } else {
+            field.value = originalSkillsText;
+        }
+    }
+
+    // --- Suggestion apply / dismiss ---
+    function applySuggestion(idx) {
+        const card = document.getElementById('suggestion-' + idx);
+        if (!card) return;
+        const field = card.dataset.field;
+        const value = card.dataset.value;
+
+        // Map suggestion field → form input
+        const personalFields = ['name', 'title', 'email', 'phone', 'location', 'summary'];
+        if (personalFields.includes(field)) {
+            const input = document.getElementById('p-' + field);
+            if (input && !input.disabled) {
+                input.value = value;
+                // Also update cvData
+                if (cvData.personal_info) cvData.personal_info[field] = value;
+            }
+        } else if (field === 'skills') {
+            const skillsField = document.getElementById('skills-field');
+            skillsField.value = value;
+            originalSkillsText = value;
+        }
+        // Mark card as applied
+        card.classList.add('applied');
+    }
+
+    function dismissSuggestion(idx) {
+        const card = document.getElementById('suggestion-' + idx);
+        if (card) card.classList.add('dismissed');
+    }
+
+    // --- Populate form ---
     function populateForm(data) {
-        // 0. Set detected language
         const lang = data.language || 'fr';
         document.getElementById('lang-en').checked = (lang === 'en');
         document.getElementById('lang-fr').checked = (lang === 'fr');
 
-        // 1. Personal Info
+        // Personal Info
         const pContainer = document.getElementById('personal-fields');
         pContainer.innerHTML = '';
         for (const [key, value] of Object.entries(data.personal_info)) {
-            if (key === 'photo_path') continue; // Don't edit the path
+            if (key === 'photo_path') continue;
             const isAnon = ANON_FIELDS.has(key);
             const display = isAnon ? anonValue(key, value) : (value || '');
-            const label = isAnon ? key.toUpperCase() + ' (anonymized)' : key.toUpperCase();
+            const label = key.charAt(0).toUpperCase() + key.slice(1);
+            const suffix = isAnon ? ' (anonymized)' : '';
             const readOnly = isAnon ? 'disabled' : '';
-            const style = isAnon ? 'style="opacity:0.65; cursor:not-allowed;"' : '';
+            const opacity = isAnon ? 'opacity: 0.6;' : '';
             pContainer.innerHTML += `
-                <div class="form-group">
-                    <label>${label}</label>
-                    <input type="text" id="p-${key}" value="${escapeHtml(display)}" placeholder="Missing info..." ${readOnly} ${style}>
+                <div>
+                    <label class="form-label">${label}${suffix}</label>
+                    <input type="text" id="p-${key}" value="${escapeHtml(display)}" placeholder="Not provided" ${readOnly} style="${opacity}">
                 </div>`;
         }
 
-        // 2. Skills
-        document.getElementById('skills-field').value = data.skills.join(', ');
+        // Skills
+        const skillsText = data.skills.join(', ');
+        document.getElementById('skills-field').value = skillsText;
+        originalSkillsText = skillsText;
+        currentSkillsMode = 'original';
+        document.getElementById('btn-skills-original').classList.add('active');
+        document.getElementById('btn-skills-suggested').classList.remove('active');
 
-        // 3. Experience
+        // Experience
         renderArray('experience-list', data.experience, ['role', 'company', 'period'], 'details');
-        
-        // 4. Education
+        // Education
         renderArray('education-list', data.education, ['degree', 'school', 'period'], 'details');
-
-        document.getElementById('preview-hint').textContent = 'Fields loaded. Review and export when ready.';
     }
 
     function renderArray(containerId, arrayData, fields, detailKey) {
         const container = document.getElementById(containerId);
         const dataKey = containerId === 'experience-list' ? 'experience' : 'education';
         container.innerHTML = '';
-        
+
         arrayData.forEach((item, index) => {
             let html = `<div class="array-item">`;
             html += `<button type="button" class="btn-delete btn-delete-item" onclick="removeItem('${dataKey}', ${index})" title="Remove">&#10005;</button>`;
-            
+
             fields.forEach(field => {
-                html += `<label>${field}:</label> <input type="text" class="${containerId}-input" data-index="${index}" data-field="${field}" value="${escapeHtml(item[field] || '')}"><br>`;
+                const lbl = field.charAt(0).toUpperCase() + field.slice(1);
+                html += `<label class="form-label">${lbl}</label>
+                    <input type="text" class="${containerId}-input" data-index="${index}" data-field="${field}" value="${escapeHtml(item[field] || '')}">`;
             });
-            
+
             if (detailKey && Array.isArray(item[detailKey])) {
-                html += `<label>details:</label>`;
+                html += `<label class="form-label">Details</label>`;
                 item[detailKey].forEach((d, di) => {
                     html += `<div class="detail-row">
                         <input type="text" class="${containerId}-detail" data-index="${index}" data-dindex="${di}" value="${escapeHtml(d || '')}">
                         <button type="button" class="btn-delete" onclick="removeDetail('${dataKey}', ${index}, ${di})" title="Remove">&#10005;</button>
                     </div>`;
                 });
-                html += `<button type="button" class="btn btn-small" style="margin-top:6px;" onclick="addDetail('${containerId}', ${index}, '${detailKey}')">+ Add detail</button>`;
+                html += `<button type="button" class="btn btn-small" style="margin-top:6px; width:auto;" onclick="addDetail('${containerId}', ${index}, '${detailKey}')">+ Detail</button>`;
             }
             html += `</div>`;
             container.innerHTML += html;
@@ -425,27 +816,27 @@
 
     function addDetail(containerId, idx, detailKey) {
         const dataKey = containerId === 'experience-list' ? 'experience' : 'education';
-        harvestArrayData(); // Save current edits first
+        harvestArrayData();
         cvData[dataKey][idx][detailKey].push('');
         renderArray(containerId, cvData[dataKey], containerId === 'experience-list' ? ['role','company','period'] : ['degree','school','period'], 'details');
     }
 
     function removeDetail(dataKey, itemIdx, detailIdx) {
-        harvestArrayData(); // Save current edits first
+        harvestArrayData();
         cvData[dataKey][itemIdx].details.splice(detailIdx, 1);
         const containerId = dataKey === 'experience' ? 'experience-list' : 'education-list';
         renderArray(containerId, cvData[dataKey], dataKey === 'experience' ? ['role','company','period'] : ['degree','school','period'], 'details');
     }
 
     function removeItem(dataKey, index) {
-        harvestArrayData(); // Save current edits first
+        harvestArrayData();
         cvData[dataKey].splice(index, 1);
         const containerId = dataKey === 'experience' ? 'experience-list' : 'education-list';
         renderArray(containerId, cvData[dataKey], dataKey === 'experience' ? ['role','company','period'] : ['degree','school','period'], 'details');
     }
 
     function addItem(kind) {
-        harvestArrayData(); // Save current edits first
+        harvestArrayData();
         if (kind === 'experience') {
             cvData.experience.push({period:'', role:'', company:'', details:['']});
             renderArray('experience-list', cvData.experience, ['role','company','period'], 'details');
@@ -458,21 +849,15 @@
     function harvestArrayData() {
         ['experience-list', 'education-list'].forEach(listId => {
             const dataKey = listId === 'experience-list' ? 'experience' : 'education';
-            const inputs = document.querySelectorAll(`.${listId}-input`);
-            inputs.forEach(input => {
+            document.querySelectorAll(`.${listId}-input`).forEach(input => {
                 const idx = parseInt(input.dataset.index);
                 const field = input.dataset.field;
-                if (cvData[dataKey][idx]) {
-                    cvData[dataKey][idx][field] = input.value;
-                }
+                if (cvData[dataKey][idx]) cvData[dataKey][idx][field] = input.value;
             });
-            const detailInputs = document.querySelectorAll(`.${listId}-detail`);
-            detailInputs.forEach(input => {
+            document.querySelectorAll(`.${listId}-detail`).forEach(input => {
                 const idx = parseInt(input.dataset.index);
                 const dindex = parseInt(input.dataset.dindex);
-                if (cvData[dataKey][idx] && cvData[dataKey][idx].details) {
-                    cvData[dataKey][idx].details[dindex] = input.value;
-                }
+                if (cvData[dataKey][idx] && cvData[dataKey][idx].details) cvData[dataKey][idx].details[dindex] = input.value;
             });
         });
     }
@@ -480,93 +865,60 @@
     async function generateCV() {
         const generateBtn = document.getElementById('generate-btn');
         const loadingMsg = document.getElementById('pdf-loading-msg');
-        
-        // Show loader and disable button
         generateBtn.disabled = true;
         generateBtn.textContent = 'Generating...';
         loadingMsg.style.display = 'flex';
 
-        // 1. Harvest Data from Inputs
-        // Update Language
         cvData.language = document.querySelector('input[name="language"]:checked').value;
 
-        // Update Personal Info (skip anonymized read-only fields — originals stay in cvData)
-        for (const [key, value] of Object.entries(cvData.personal_info)) {
+        for (const [key] of Object.entries(cvData.personal_info)) {
             if (key === 'photo_path' || ANON_FIELDS.has(key)) continue;
             cvData.personal_info[key] = document.getElementById(`p-${key}`).value;
         }
 
-        // Update Skills - filter empty
         cvData.skills = document.getElementById('skills-field').value
-            .split(',')
-            .map(s => s.trim())
-            .filter(s => s.length > 0);
+            .split(',').map(s => s.trim()).filter(s => s.length > 0);
 
-        // Update Arrays
         harvestArrayData();
 
-        // 2. Clean up empty entries
-        // Filter out empty details within each item
         ['experience', 'education'].forEach(key => {
             cvData[key].forEach(item => {
-                if (item.details) {
-                    item.details = item.details.filter(d => d && d.trim().length > 0);
-                }
+                if (item.details) item.details = item.details.filter(d => d && d.trim().length > 0);
             });
         });
-
-        // Filter out empty experience entries (no role AND no company)
-        cvData.experience = cvData.experience.filter(exp => 
+        cvData.experience = cvData.experience.filter(exp =>
             (exp.role && exp.role.trim()) || (exp.company && exp.company.trim())
         );
-
-        // Filter out empty education entries (no degree AND no school)
-        cvData.education = cvData.education.filter(edu => 
+        cvData.education = cvData.education.filter(edu =>
             (edu.degree && edu.degree.trim()) || (edu.school && edu.school.trim())
         );
 
-        // 3. Send to Backend
         try {
             const response = await fetch('/generate-docx', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(cvData)
             });
-
             if (!response.ok) throw new Error("Generation failed");
 
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
-
-            // Store for "download again"
             if (lastBlobUrl) window.URL.revokeObjectURL(lastBlobUrl);
             lastBlobUrl = url;
 
-            // Derive filename from person name
             const rawName = (cvData.personal_info.name || 'My_Smart_CV')
-                .replace(/[^a-z0-9\-_ ]/gi, '')
-                .trim() || 'My_Smart_CV';
+                .replace(/[^a-z0-9\-_ ]/gi, '').trim() || 'My_Smart_CV';
             lastFilename = `${rawName}.docx`;
 
-            // Auto-download
             const a = document.createElement('a');
-            a.href = url;
-            a.download = lastFilename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
+            a.href = url; a.download = lastFilename;
+            document.body.appendChild(a); a.click(); a.remove();
 
-            // Show result card
-            const resultCard = document.getElementById('result-card');
-            if (resultCard) resultCard.style.display = 'block';
-
-            // Stepper final dot
-            const dots = document.querySelectorAll('.dot');
-            if (dots[2]) dots[2].classList.add('active');
+            document.getElementById('result-card').style.display = 'block';
+            setStep(3);
         } catch (err) {
             alert("Error generating CV: " + err.message);
         } finally {
-            // Hide loader and re-enable button
             generateBtn.disabled = false;
             generateBtn.textContent = 'Generate Final CV';
             loadingMsg.style.display = 'none';
@@ -576,11 +928,8 @@
     function downloadAgain() {
         if (lastBlobUrl) {
             const a = document.createElement('a');
-            a.href = lastBlobUrl;
-            a.download = lastFilename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
+            a.href = lastBlobUrl; a.download = lastFilename;
+            document.body.appendChild(a); a.click(); a.remove();
         }
     }
 </script>
