@@ -4,6 +4,8 @@ import subprocess
 import secrets
 import copy
 import base64
+import threading
+import uuid
 from functools import wraps
 from flask import Flask, request, jsonify, send_file, render_template, session, redirect, url_for
 from werkzeug.utils import secure_filename
@@ -43,6 +45,11 @@ DEFAULT_PHOTO = os.path.join(STATIC_DIR, 'uploads', 'ntrace_logo.jpeg')
 ALLOWED_EXTENSIONS = {'.pdf', '.doc', '.docx'}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
+# --- ASYNC JOB STORAGE ---
+# In-memory dict holding background job state.
+# Each entry: {"status": "processing"|"done"|"error", "result": ..., "error": ...}
+jobs: dict[str, dict] = {}
 
 # --- ANONYMIZATION CONSTANTS ---
 # Update COMPANY_PHONE in your .env file to match your company's phone number.
@@ -468,36 +475,12 @@ def _call_openai_analysis(cv_data: dict, target_lang: str) -> dict:
     return result
 
 
-@app.route('/parse-cv', methods=['POST'])
-@login_required
-def parse_cv():
-    """Upload a CV (PDF / DOCX / DOC), extract data via OpenAI, return JSON.
-
-    PDFs  → pages are rendered as images and sent to GPT-4o vision
-            (handles complex layouts, columns, text-boxes perfectly).
-    DOCX/DOC → text is extracted and sent to GPT-4o-mini (cheaper, sufficient
-               for Word files which rarely have visual-layout issues).
-    """
-    if 'cv_file' not in request.files:
-        return jsonify({"error": "Missing CV file"}), 400
-
-    cv_file = request.files['cv_file']
-    cv_filename = secure_filename(cv_file.filename)
-    ext = os.path.splitext(cv_filename)[1].lower()
-
-    if ext not in ALLOWED_EXTENSIONS:
-        return jsonify({
-            "error": f"Unsupported format '{ext}'. Please upload a PDF, DOC, or DOCX file."
-        }), 400
-
-    cv_path = os.path.join(UPLOAD_FOLDER, cv_filename)
-    cv_file.save(cv_path)
-
+def _process_cv_job(job_id: str, cv_path: str, ext: str):
+    """Background worker: runs extraction + analysis and stores result in jobs dict."""
     try:
         if ext == '.pdf':
             # ── Vision path: PDF → images → GPT-4o ──────────────
             page_images = _pdf_to_base64_images(cv_path)
-            # Use text extraction only for language detection
             raw_text = _extract_pdf(cv_path)
             target_lang = detect_language(raw_text)
             extracted_data = _call_openai_vision(page_images, target_lang)
@@ -530,11 +513,69 @@ def parse_cv():
             }
 
         extracted_data['analysis'] = analysis
-        return jsonify(extracted_data)
+        jobs[job_id] = {"status": "done", "result": extracted_data}
 
     except Exception as e:
-        print(f"CV Parse Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        print(f"CV Parse Error (job {job_id}): {e}")
+        jobs[job_id] = {"status": "error", "error": str(e)}
+
+
+@app.route('/parse-cv', methods=['POST'])
+@login_required
+def parse_cv():
+    """Upload a CV, validate it, kick off background processing, return job_id.
+
+    The actual LLM calls run in a background thread so the HTTP response
+    returns immediately (avoids platform proxy timeouts).
+    Poll GET /job-status/<job_id> for results.
+    """
+    if 'cv_file' not in request.files:
+        return jsonify({"error": "Missing CV file"}), 400
+
+    cv_file = request.files['cv_file']
+    cv_filename = secure_filename(cv_file.filename)
+    ext = os.path.splitext(cv_filename)[1].lower()
+
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify({
+            "error": f"Unsupported format '{ext}'. Please upload a PDF, DOC, or DOCX file."
+        }), 400
+
+    cv_path = os.path.join(UPLOAD_FOLDER, cv_filename)
+    cv_file.save(cv_path)
+
+    job_id = uuid.uuid4().hex
+    jobs[job_id] = {"status": "processing"}
+
+    thread = threading.Thread(
+        target=_process_cv_job,
+        args=(job_id, cv_path, ext),
+        daemon=True,
+    )
+    thread.start()
+
+    return jsonify({"job_id": job_id}), 202
+
+
+@app.route('/job-status/<job_id>')
+@login_required
+def job_status(job_id):
+    """Poll this endpoint to get background job results."""
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+
+    if job["status"] == "done":
+        result = job["result"]
+        del jobs[job_id]  # cleanup
+        return jsonify({"status": "done", "result": result})
+
+    if job["status"] == "error":
+        err = job["error"]
+        del jobs[job_id]  # cleanup
+        return jsonify({"status": "error", "error": err}), 500
+
+    return jsonify({"status": "processing"})
 
 
 @app.route('/generate-docx', methods=['POST'])

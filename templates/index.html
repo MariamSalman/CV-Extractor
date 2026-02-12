@@ -601,16 +601,23 @@
         document.getElementById('loading-msg').style.display = 'flex';
         document.getElementById('analysis-placeholder').style.display = 'none';
         document.getElementById('analysis-panel').classList.remove('visible');
-        document.getElementById('status-text').textContent = 'Analysing your CV...';
+        document.getElementById('status-text').textContent = 'Uploading...';
         document.getElementById('analyze-btn').disabled = true;
 
         const formData = new FormData();
         formData.append('cv_file', cvFile);
 
         try {
-            const response = await fetch('/parse-cv', { method: 'POST', body: formData });
-            const data = await response.json();
-            if (data.error) throw new Error(data.error);
+            // 1. Submit the file — returns immediately with a job_id
+            const submitResp = await fetch('/parse-cv', { method: 'POST', body: formData });
+            const submitData = await submitResp.json();
+            if (submitData.error) throw new Error(submitData.error);
+
+            const jobId = submitData.job_id;
+            document.getElementById('status-text').textContent = 'Analysing your CV...';
+
+            // 2. Poll for results every 2 seconds
+            const data = await pollJob(jobId);
 
             cvData = data;
             populateForm(data);
@@ -626,6 +633,29 @@
             document.getElementById('status-text').textContent = 'Ready';
             document.getElementById('analyze-btn').disabled = false;
         }
+    }
+
+    function pollJob(jobId) {
+        return new Promise((resolve, reject) => {
+            const interval = setInterval(async () => {
+                try {
+                    const resp = await fetch('/job-status/' + jobId);
+                    const data = await resp.json();
+
+                    if (data.status === 'done') {
+                        clearInterval(interval);
+                        resolve(data.result);
+                    } else if (data.status === 'error') {
+                        clearInterval(interval);
+                        reject(new Error(data.error || 'Processing failed'));
+                    }
+                    // else status === 'processing' → keep polling
+                } catch (e) {
+                    clearInterval(interval);
+                    reject(new Error('Connection lost while processing'));
+                }
+            }, 2000);
+        });
     }
 
     // --- Populate analysis panel ---
