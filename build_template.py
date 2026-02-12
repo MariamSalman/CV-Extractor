@@ -321,41 +321,52 @@ def main():
     if doc.paragraphs:
         doc.element.body.remove(doc.paragraphs[0]._p)
 
-    # ── Header table (1 row × 2 cols, borderless) ───────────────────────
-    table = doc.add_table(rows=1, cols=2)
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    _remove_table_borders(table)
+    # ── Enable "Different First Page" header ─────────────────────────────
+    section.different_first_page_header_footer = True
 
-    # Set column widths: logo ~1.8in, rest fills remaining
-    left_cell = table.cell(0, 0)
-    right_cell = table.cell(0, 1)
-    left_cell.width = Inches(1.9)
-    right_cell.width = Inches(5.5)
+    # ── Default header (pages 2+) – logo only ───────────────────────────
+    default_header = section.header
+    default_header.is_linked_to_previous = False
+    logo_only = default_header.paragraphs[0]
+    logo_only.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _set_para_spacing(logo_only, before=Pt(0), after=Pt(0))
+    logo_only.add_run().add_picture(LOGO, width=LOGO_W, height=LOGO_H)
 
-    _set_cell_margins(left_cell, top=0, start=0, bottom=0, end=0)
-    _set_cell_margins(right_cell, top=0, start=60, bottom=0, end=0)
+    # ── First-page header – logo + name/title/contact side by side ───────
+    first_header = section.first_page_header
+    first_header.is_linked_to_previous = False
 
-    # -- Left cell: Logo --
-    logo_para = left_cell.paragraphs[0]
+    # Use a borderless 2-column table inside the first-page header
+    usable_width = section.page_width - section.left_margin - section.right_margin
+    hdr_tbl = first_header.add_table(rows=1, cols=2, width=usable_width)
+    hdr_tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _remove_table_borders(hdr_tbl)
+
+    hdr_left = hdr_tbl.cell(0, 0)
+    hdr_right = hdr_tbl.cell(0, 1)
+    hdr_left.width = Inches(1.9)
+    hdr_right.width = Inches(5.5)
+    _set_cell_margins(hdr_left, top=0, start=0, bottom=0, end=0)
+    _set_cell_margins(hdr_right, top=0, start=60, bottom=0, end=0)
+
+    # Left cell: Logo
+    logo_para = hdr_left.paragraphs[0]
     logo_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _set_para_spacing(logo_para, before=Pt(0), after=Pt(0))
-    logo_run = logo_para.add_run()
-    logo_run.add_picture(LOGO, width=LOGO_W, height=LOGO_H)
+    logo_para.add_run().add_picture(LOGO, width=LOGO_W, height=LOGO_H)
 
-    # -- Right cell: Name, Title, Contact --
-    # Name
-    name_para = right_cell.paragraphs[0]
+    # Right cell: Name
+    name_para = hdr_right.paragraphs[0]
     _set_para_spacing(name_para, before=Pt(2), after=Pt(0))
     _add_run(name_para, '{{ name }}', size=NAME_SIZE, bold=True, color=CLR_BLUE)
 
-    # Title
-    title_para = right_cell.add_paragraph()
+    # Right cell: Title
+    title_para = hdr_right.add_paragraph()
     _set_para_spacing(title_para, before=Pt(0), after=Pt(2))
     _add_run(title_para, '{{ title }}', size=TITLE_SIZE, color=CLR_TITLE_BLUE)
 
-    # Contact line – each icon+text pair is conditional via {%r if %}
-    # so missing fields don't leave blank icons.
-    contact_para = right_cell.add_paragraph()
+    # Right cell: Contact line – each icon+text conditional via {%r if %}
+    contact_para = hdr_right.add_paragraph()
     _set_para_spacing(contact_para, before=Pt(2), after=Pt(0))
 
     # Email (conditional)
@@ -373,6 +384,11 @@ def main():
     _add_icon(contact_para, ICON_LOC, ICON_LOC_W, ICON_LOC_H)
     _add_run(contact_para, ' {{ location }}', size=CONTACT_SIZE, color=CLR_GRAY)
     _add_run(contact_para, '{%r endif %}', size=Pt(1), color=RGBColor(0xFF, 0xFF, 0xFF))
+
+    # Remove the default empty paragraph the header table may leave above
+    for p in first_header.paragraphs:
+        if not p.text.strip() and not p.runs:
+            p._p.getparent().remove(p._p)
 
     # ── Summary (conditional – hidden when empty) ──────────────────────
     _add_jinja_para(doc, '{%p if summary %}',

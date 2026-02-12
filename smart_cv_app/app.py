@@ -3,11 +3,13 @@ import json
 import subprocess
 import secrets
 import copy
+import base64
 from functools import wraps
 from flask import Flask, request, jsonify, send_file, render_template, session, redirect, url_for
 from werkzeug.utils import secure_filename
 from openai import OpenAI
 from PyPDF2 import PdfReader
+import fitz  # pymupdf – PDF page → image conversion
 from dotenv import load_dotenv
 from docx import Document as DocxDocument
 from docxtpl import DocxTemplate
@@ -158,6 +160,30 @@ def _extract_doc(filepath):
 
 
 # ──────────────────────────────────────────────
+#  PDF → IMAGES  (for GPT-4o vision)
+# ──────────────────────────────────────────────
+
+MAX_PAGES = 20  # safety cap – most CVs are 1-5 pages
+
+def _pdf_to_base64_images(filepath: str) -> list[str]:
+    """Convert each page of a PDF to a base64-encoded PNG string.
+
+    Uses pymupdf (fitz) at ~200 DPI for a good quality/token-cost balance.
+    Returns at most MAX_PAGES images.
+    """
+    doc = fitz.open(filepath)
+    images = []
+    for page_num in range(min(len(doc), MAX_PAGES)):
+        page = doc[page_num]
+        # 200 DPI: scale factor = 200/72 ≈ 2.78
+        pix = page.get_pixmap(matrix=fitz.Matrix(200 / 72, 200 / 72))
+        png_bytes = pix.tobytes("png")
+        images.append(base64.b64encode(png_bytes).decode("utf-8"))
+    doc.close()
+    return images
+
+
+# ──────────────────────────────────────────────
 #  ANONYMIZATION
 # ──────────────────────────────────────────────
 
@@ -287,10 +313,84 @@ def logout():
 def index():
     return render_template('index.html')
 
+EXTRACTION_PROMPT = """\
+Extract data from this CV into this exact JSON structure. \
+Respond in {lang_instruction} and translate content to that language if needed.
+If a field is missing, use null. Do not shorten or summarize descriptions.
+Structure:
+{{
+  "personal_info": {{ "name": "", "title": "", "email": "", "phone": "", "location": "", "summary": "" }},
+  "education": [ {{ "period": "YYYY - YYYY", "degree": "", "school": "", "details": [""] }} ],
+  "skills": ["skill1", "skill2"],
+  "experience": [ {{ "period": "Month Year - Month Year", "role": "", "company": "", "details": [""] }} ]
+}}
+Return ONLY valid JSON.
+"""
+
+
+def _call_openai_vision(page_images: list[str], target_lang: str) -> dict:
+    """Send PDF page images to GPT-4o vision and return structured CV data."""
+    lang_instruction = 'English' if target_lang == 'en' else 'French'
+    prompt = EXTRACTION_PROMPT.format(lang_instruction=lang_instruction)
+
+    # Build content: prompt text + one image_url per page
+    content: list[dict] = [{"type": "text", "text": prompt}]
+    for b64 in page_images:
+        content.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/png;base64,{b64}",
+                "detail": "high",
+            },
+        })
+
+    completion = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You convert CV documents into structured JSON."},
+            {"role": "user", "content": content},
+        ],
+        temperature=0,
+    )
+    json_str = completion.choices[0].message.content
+    json_str = json_str.replace("```json", "").replace("```", "").strip()
+    return json.loads(json_str)
+
+
+def _call_openai_text(raw_text: str, target_lang: str) -> dict:
+    """Send extracted text to GPT-4o-mini and return structured CV data."""
+    lang_instruction = 'English' if target_lang == 'en' else 'French'
+    prompt = EXTRACTION_PROMPT.format(lang_instruction=lang_instruction)
+
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You convert CV text into structured JSON."},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "text", "text": "CV Text:\n" + raw_text[:100000]},
+                ],
+            },
+        ],
+        temperature=0,
+    )
+    json_str = completion.choices[0].message.content
+    json_str = json_str.replace("```json", "").replace("```", "").strip()
+    return json.loads(json_str)
+
+
 @app.route('/parse-cv', methods=['POST'])
 @login_required
 def parse_cv():
-    """Upload a CV (PDF / DOCX / DOC), extract text, call OpenAI, return JSON."""
+    """Upload a CV (PDF / DOCX / DOC), extract data via OpenAI, return JSON.
+
+    PDFs  → pages are rendered as images and sent to GPT-4o vision
+            (handles complex layouts, columns, text-boxes perfectly).
+    DOCX/DOC → text is extracted and sent to GPT-4o-mini (cheaper, sufficient
+               for Word files which rarely have visual-layout issues).
+    """
     if 'cv_file' not in request.files:
         return jsonify({"error": "Missing CV file"}), 400
 
@@ -306,46 +406,19 @@ def parse_cv():
     cv_path = os.path.join(UPLOAD_FOLDER, cv_filename)
     cv_file.save(cv_path)
 
-    # --- Extract text ---
     try:
-        raw_text = extract_text(cv_path)
-    except Exception as e:
-        print(f"Text Extraction Error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-    # --- Call OpenAI ---
-    try:
-        target_lang = detect_language(raw_text)
-        prompt = f"""Extract data from this CV into this exact JSON structure. Respond in { 'English' if target_lang=='en' else 'French' } and translate content to that language if needed.
-If a field is missing, use null. Do not shorten or summarize descriptions.
-Structure:
-{{
-  "personal_info": {{ "name": "", "title": "", "email": "", "phone": "", "location": "", "summary": "" }},
-  "education": [ {{ "period": "YYYY - YYYY", "degree": "", "school": "", "details": [""] }} ],
-  "skills": ["skill1", "skill2"],
-  "experience": [ {{ "period": "Month Year - Month Year", "role": "", "company": "", "details": [""] }} ]
-}}
-Return ONLY valid JSON.
-"""
-
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You convert CV text into structured JSON."},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "text", "text": "CV Text:\n" + raw_text[:100000]}
-                    ]
-                }
-            ],
-            temperature=0
-        )
-
-        json_str = completion.choices[0].message.content
-        json_str = json_str.replace("```json", "").replace("```", "").strip()
-        extracted_data = json.loads(json_str)
+        if ext == '.pdf':
+            # ── Vision path: PDF → images → GPT-4o ──────────────
+            page_images = _pdf_to_base64_images(cv_path)
+            # Use text extraction only for language detection
+            raw_text = _extract_pdf(cv_path)
+            target_lang = detect_language(raw_text)
+            extracted_data = _call_openai_vision(page_images, target_lang)
+        else:
+            # ── Text path: DOCX/DOC → text → GPT-4o-mini ───────
+            raw_text = extract_text(cv_path)
+            target_lang = detect_language(raw_text)
+            extracted_data = _call_openai_text(raw_text, target_lang)
 
         # Photo: use default bundled photo
         extracted_data['personal_info']['photo_path'] = DEFAULT_PHOTO
@@ -354,14 +427,16 @@ Return ONLY valid JSON.
         # Ensure summary exists; if missing, ask model to draft one
         if not extracted_data['personal_info'].get('summary'):
             try:
-                extracted_data['personal_info']['summary'] = generate_summary(raw_text, target_lang)
+                extracted_data['personal_info']['summary'] = generate_summary(
+                    raw_text, target_lang
+                )
             except Exception:
                 extracted_data['personal_info']['summary'] = ''
 
         return jsonify(extracted_data)
 
     except Exception as e:
-        print(f"AI Error: {e}")
+        print(f"CV Parse Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 

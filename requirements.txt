@@ -1,5 +1,6 @@
 flask
 openai
 PyPDF2
+pymupdf
 python-dotenv
 docxtpl
