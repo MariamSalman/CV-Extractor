@@ -661,7 +661,7 @@
     // --- Populate analysis panel ---
     function populateAnalysis(analysis) {
         // Summary
-        document.getElementById('analysis-summary').textContent = analysis.summary || 'No summary available.';
+        document.getElementById('analysis-summary').textContent = analysis.candidate_overview || analysis.summary || 'No summary available.';
 
         // Missing fields
         const missingSection = document.getElementById('analysis-missing-section');

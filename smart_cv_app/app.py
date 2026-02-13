@@ -3,7 +3,6 @@ import json
 import subprocess
 import secrets
 import copy
-import base64
 import threading
 import uuid
 from functools import wraps
@@ -11,7 +10,6 @@ from flask import Flask, request, jsonify, send_file, render_template, session, 
 from werkzeug.utils import secure_filename
 from openai import OpenAI
 from PyPDF2 import PdfReader
-import fitz  # pymupdf – PDF page → image conversion
 from dotenv import load_dotenv
 from docx import Document as DocxDocument
 from docxtpl import DocxTemplate
@@ -167,30 +165,6 @@ def _extract_doc(filepath):
 
 
 # ──────────────────────────────────────────────
-#  PDF → IMAGES  (for GPT-4o vision)
-# ──────────────────────────────────────────────
-
-MAX_PAGES = 20  # safety cap – most CVs are 1-5 pages
-
-def _pdf_to_base64_images(filepath: str) -> list[str]:
-    """Convert each page of a PDF to a base64-encoded PNG string.
-
-    Uses pymupdf (fitz) at ~200 DPI for a good quality/token-cost balance.
-    Returns at most MAX_PAGES images.
-    """
-    doc = fitz.open(filepath)
-    images = []
-    for page_num in range(min(len(doc), MAX_PAGES)):
-        page = doc[page_num]
-        # 200 DPI: scale factor = 200/72 ≈ 2.78
-        pix = page.get_pixmap(matrix=fitz.Matrix(200 / 72, 200 / 72))
-        png_bytes = pix.tobytes("png")
-        images.append(base64.b64encode(png_bytes).decode("utf-8"))
-    doc.close()
-    return images
-
-
-# ──────────────────────────────────────────────
 #  ANONYMIZATION
 # ──────────────────────────────────────────────
 
@@ -343,35 +317,6 @@ Return ONLY valid JSON.
 """
 
 
-def _call_openai_vision(page_images: list[str], target_lang: str) -> dict:
-    """Send PDF page images to GPT-4o vision and return structured CV data."""
-    lang_instruction = 'English' if target_lang == 'en' else 'French'
-    prompt = EXTRACTION_PROMPT.format(lang_instruction=lang_instruction)
-
-    # Build content: prompt text + one image_url per page
-    content: list[dict] = [{"type": "text", "text": prompt}]
-    for b64 in page_images:
-        content.append({
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/png;base64,{b64}",
-                "detail": "high",
-            },
-        })
-
-    completion = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You convert CV documents into structured JSON."},
-            {"role": "user", "content": content},
-        ],
-        temperature=0,
-    )
-    json_str = completion.choices[0].message.content
-    json_str = json_str.replace("```json", "").replace("```", "").strip()
-    return json.loads(json_str)
-
-
 def _call_openai_text(raw_text: str, target_lang: str) -> dict:
     """Send extracted text to GPT-4o-mini and return structured CV data."""
     lang_instruction = 'English' if target_lang == 'en' else 'French'
@@ -404,9 +349,10 @@ ANALYSIS_PROMPT = """\
 You are an expert CV reviewer. Analyse the following structured CV data and \
 return a JSON object with exactly these keys:
 
-1. "summary" — a concise 2-3 sentence professional summary of the candidate \
-(who they are, their main expertise, years/level of experience). Write in \
-{lang_instruction}.
+1. "candidate_overview" — a concise 2-3 sentence overview of the candidate \
+for the reviewer's reference (who they are, their main expertise, \
+years/level of experience). This is NOT the same as the CV's "summary" field. \
+Write in {lang_instruction}.
 
 2. "missing_fields" — a list of field names that are empty, null, or missing. \
 Check these fields: name, title, email, phone, location, summary, education, \
@@ -419,7 +365,8 @@ which you can propose useful content. Each object must have:
 (e.g. "Professional Title", "Profile Summary"). Write in {lang_instruction}.
   - "value": your proposed content for that field. For text fields provide a \
 string. For "skills" provide a comma-separated string of skills.
-Special rule for "summary": if the summary field is empty, suggest a 1-2 line \
+IMPORTANT: if the CV's "summary" field in personal_info is empty, you MUST \
+include a suggestion for it. The suggested summary should be a 1-2 line \
 professional profile description. Do NOT mention the candidate's name in it. \
 Focus on their expertise, role, and key strengths.
 Only include suggestions where you can infer reasonable content from the rest \
@@ -465,10 +412,10 @@ def _call_openai_analysis(cv_data: dict, target_lang: str) -> dict:
     try:
         result = json.loads(json_str)
     except json.JSONDecodeError:
-        result = {"summary": "", "missing_fields": [], "suggestions": [], "compact_skills": None}
+        result = {"candidate_overview": "", "missing_fields": [], "suggestions": [], "compact_skills": None}
 
     # Normalise keys
-    result.setdefault("summary", "")
+    result.setdefault("candidate_overview", "")
     result.setdefault("missing_fields", [])
     result.setdefault("suggestions", [])
     result.setdefault("compact_skills", None)
@@ -478,17 +425,9 @@ def _call_openai_analysis(cv_data: dict, target_lang: str) -> dict:
 def _process_cv_job(job_id: str, cv_path: str, ext: str):
     """Background worker: runs extraction + analysis and stores result in jobs dict."""
     try:
-        if ext == '.pdf':
-            # ── Vision path: PDF → images → GPT-4o ──────────────
-            page_images = _pdf_to_base64_images(cv_path)
-            raw_text = _extract_pdf(cv_path)
-            target_lang = detect_language(raw_text)
-            extracted_data = _call_openai_vision(page_images, target_lang)
-        else:
-            # ── Text path: DOCX/DOC → text → GPT-4o-mini ───────
-            raw_text = extract_text(cv_path)
-            target_lang = detect_language(raw_text)
-            extracted_data = _call_openai_text(raw_text, target_lang)
+        raw_text = extract_text(cv_path)
+        target_lang = detect_language(raw_text)
+        extracted_data = _call_openai_text(raw_text, target_lang)
 
         # Photo: use default bundled photo
         extracted_data['personal_info']['photo_path'] = DEFAULT_PHOTO
