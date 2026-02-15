@@ -12,7 +12,9 @@ from openai import OpenAI
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
 from docx import Document as DocxDocument
-from docxtpl import DocxTemplate
+from docx.shared import Pt, Cm, RGBColor
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 
 # Resolve project paths relative to this file so Flask can find templates/static
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -45,12 +47,9 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 # --- ASYNC JOB STORAGE ---
-# In-memory dict holding background job state.
-# Each entry: {"status": "processing"|"done"|"error", "result": ..., "error": ...}
 jobs: dict[str, dict] = {}
 
 # --- ANONYMIZATION CONSTANTS ---
-# Update COMPANY_PHONE in your .env file to match your company's phone number.
 COMPANY_PHONE = os.getenv("COMPANY_PHONE", "+33 6 62 54 45 33")
 COMPANY_EMAIL = "servicecommercial@ntrace-consulting.com"
 
@@ -80,7 +79,6 @@ ENGLISH_KEYWORDS = {
 }
 
 def detect_language(text: str) -> str:
-    """Detect language based on keyword frequency."""
     words = set(text.lower().split())
     fr_score = len(words & FRENCH_KEYWORDS)
     en_score = len(words & ENGLISH_KEYWORDS)
@@ -98,6 +96,61 @@ def generate_summary(text: str, lang: str) -> str:
         max_tokens=180
     )
     return completion.choices[0].message.content.strip()
+
+
+# ──────────────────────────────────────────────
+#  SKILL GROUPING (LLM call)
+# ──────────────────────────────────────────────
+
+SKILL_GROUP_PROMPT = """\
+You are given a flat list of skills from a CV. Group them into semantic categories \
+and return a JSON object where each key is a short category label and the value is \
+a comma-separated string of skills belonging to that category.
+
+Rules:
+- Use 3-6 categories max. Typical categories: "Compétences techniques", \
+"Outils / Logiciels", "Méthodologies", "Compétences fonctionnelles", \
+"Langues", "Soft Skills" — but adapt to the actual skills.
+- Write category labels in {lang_instruction}.
+- Preserve ALL skills — do not drop, rename, or summarize any skill.
+- Keep the comma-separated values concise (just the skill names).
+
+Skills:
+{skills_json}
+
+Return ONLY valid JSON. Example:
+{{"Langages": "Python, Java, C++", "Outils": "Docker, Kubernetes, Git"}}
+"""
+
+
+def group_skills(skills: list, lang: str) -> dict:
+    """Use LLM to group a flat skill list into semantic categories."""
+    if not skills:
+        return {}
+    lang_instruction = 'English' if lang == 'en' else 'French'
+    prompt = SKILL_GROUP_PROMPT.format(
+        lang_instruction=lang_instruction,
+        skills_json=json.dumps(skills, ensure_ascii=False),
+    )
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You organize skills into categories. Return only valid JSON."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0,
+        )
+        raw = completion.choices[0].message.content.strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        grouped = json.loads(raw)
+        if isinstance(grouped, dict) and grouped:
+            return grouped
+    except Exception as e:
+        print(f"Skill grouping failed (non-fatal): {e}")
+    label = 'Compétences' if lang != 'en' else 'Skills'
+    return {label: ', '.join(skills)}
+
 
 def ensure_schema(data):
     data = data or {}
@@ -120,7 +173,6 @@ def ensure_schema(data):
 # ──────────────────────────────────────────────
 
 def extract_text(filepath: str) -> str:
-    """Extract text from a CV file based on its extension."""
     ext = os.path.splitext(filepath)[1].lower()
     if ext == '.pdf':
         return _extract_pdf(filepath)
@@ -140,7 +192,6 @@ def _extract_docx(filepath):
     parts = []
     for para in doc.paragraphs:
         parts.append(para.text)
-    # Also grab text that lives inside tables
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
@@ -148,7 +199,6 @@ def _extract_docx(filepath):
     return "\n".join(parts)
 
 def _extract_doc(filepath):
-    """Extract text from legacy .doc files using antiword."""
     try:
         result = subprocess.run(
             ['antiword', filepath],
@@ -156,10 +206,7 @@ def _extract_doc(filepath):
         )
         return result.stdout
     except FileNotFoundError:
-        raise ValueError(
-            "Cannot process .doc files: 'antiword' is not installed. "
-            "Please convert your file to .docx or .pdf format."
-        )
+        raise ValueError("Cannot process .doc files: 'antiword' is not installed.")
     except subprocess.CalledProcessError as e:
         raise ValueError(f"Error reading .doc file: {e.stderr}")
 
@@ -169,101 +216,294 @@ def _extract_doc(filepath):
 # ──────────────────────────────────────────────
 
 def anonymize_data(data):
-    """Return an anonymized deep-copy of the CV data.
-
-    Rules:
-      - Name  → first-letter initials matching template format (e.g. "Fatima Jabari" → "F .J .")
-      - Phone → company phone number
-      - Email → company email address
-    """
     anon = copy.deepcopy(data)
     pi = anon.get('personal_info', {})
 
-    # Name → initials (template format: "M .G .")
+    # Name → initials (e.g. "Ousmane SY" → "O. S.")
     name = pi.get('name', '').strip()
     if name:
-        parts = name.split()
+        parts = [p.strip() for p in name.split() if p.strip()]
         if len(parts) >= 2:
-            pi['name'] = f"{parts[0][0].upper()} .{parts[-1][0].upper()} ."
+            pi['name'] = f"{parts[0][0].upper()}. {parts[-1][0].upper()}."
         elif len(parts) == 1:
-            pi['name'] = f"{parts[0][0].upper()} ."
+            pi['name'] = f"{parts[0][0].upper()}."
 
-    # Company contact info
     pi['phone'] = COMPANY_PHONE
     pi['email'] = COMPANY_EMAIL
-
     anon['personal_info'] = pi
     return anon
 
 
 # ──────────────────────────────────────────────
 #  WORD (.docx) DOCUMENT GENERATION
-#  Uses docxtpl to fill CV_TEMPLATE.docx (a Jinja2-ready
-#  version of the original template).  All formatting,
-#  icons, text-boxes and layout are preserved automatically.
+#  Built directly with python-docx for full control.
 # ──────────────────────────────────────────────
 
-TEMPLATE_PATH = os.path.join(BASE_DIR, 'cv_samples', 'CV_TEMPLATE.docx')
+CLR_BLUE = RGBColor(0x1F, 0x6F, 0xB2)
+CLR_GREY = RGBColor(0x64, 0x64, 0x64)
+CLR_BLACK = RGBColor(0x00, 0x00, 0x00)
+FONT_NAME = 'Trebuchet MS'
 
 
-def build_cv_from_template(data, lang):
-    """Build a CV by rendering CV_TEMPLATE.docx with docxtpl.
+def _remove_borders(table):
+    """Remove all borders from a table."""
+    tbl = table._tbl
+    tblPr = tbl.tblPr
+    if tblPr is None:
+        tblPr = OxmlElement('w:tblPr')
+        tbl.insert(0, tblPr)
+    borders = OxmlElement('w:tblBorders')
+    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        el = OxmlElement(f'w:{edge}')
+        el.set(qn('w:val'), 'nil')
+        borders.append(el)
+    tblPr.append(borders)
 
-    The template uses two-column tables for education and experience,
-    so each entry passes separate period/degree/school or period/role/company
-    as plain strings.  Styling is handled by the template itself.
+
+def _set_table_col_widths(table, col_widths_cm):
+    """Force exact column widths by setting tblLayout=fixed, gridCol, AND each cell's tcW.
+
+    col_widths_cm: list of widths in cm, e.g. [2.8, 14.0]
     """
-    doc = DocxTemplate(TEMPLATE_PATH)
+    tbl = table._tbl
+
+    # 1. Set layout to fixed
+    tblPr = tbl.tblPr
+    if tblPr is None:
+        tblPr = OxmlElement('w:tblPr')
+        tbl.insert(0, tblPr)
+    tblLayout = OxmlElement('w:tblLayout')
+    tblLayout.set(qn('w:type'), 'fixed')
+    tblPr.append(tblLayout)
+
+    # 2. Set total table width
+    total_twips = sum(int(w * 567) for w in col_widths_cm)  # 1cm = 567 twips
+    tblW = tblPr.find(qn('w:tblW'))
+    if tblW is None:
+        tblW = OxmlElement('w:tblW')
+        tblPr.insert(0, tblW)
+    tblW.set(qn('w:type'), 'dxa')
+    tblW.set(qn('w:w'), str(total_twips))
+
+    # 3. Set gridCol widths
+    tblGrid = tbl.find(qn('w:tblGrid'))
+    if tblGrid is not None:
+        for gc in tblGrid.findall(qn('w:gridCol')):
+            tblGrid.remove(gc)
+    else:
+        tblGrid = OxmlElement('w:tblGrid')
+        tbl.insert(1, tblGrid)
+    for w_cm in col_widths_cm:
+        gc = OxmlElement('w:gridCol')
+        gc.set(qn('w:w'), str(int(w_cm * 567)))
+        tblGrid.append(gc)
+
+    # 4. Set EACH CELL's tcW -- this is what Word actually uses
+    for row in table.rows:
+        for idx, cell in enumerate(row.cells):
+            w_twips = int(col_widths_cm[idx] * 567)
+            tc = cell._tc
+            tcPr = tc.find(qn('w:tcPr'))
+            if tcPr is None:
+                tcPr = OxmlElement('w:tcPr')
+                tc.insert(0, tcPr)
+            tcW = tcPr.find(qn('w:tcW'))
+            if tcW is None:
+                tcW = OxmlElement('w:tcW')
+                tcPr.insert(0, tcW)
+            tcW.set(qn('w:type'), 'dxa')
+            tcW.set(qn('w:w'), str(w_twips))
+
+
+def _add_run(para, text, size=11, bold=False, italic=False, color=CLR_BLACK, font=FONT_NAME):
+    run = para.add_run(text)
+    run.font.size = Pt(size)
+    run.font.name = font
+    run.bold = bold
+    run.italic = italic
+    run.font.color.rgb = color
+    return run
+
+
+def _set_spacing(para, before=0, after=0, line=None):
+    pf = para.paragraph_format
+    pf.space_before = Pt(before)
+    pf.space_after = Pt(after)
+    if line is not None:
+        pf.line_spacing = Pt(line)
+
+
+def _add_section_heading(doc, text):
+    para = doc.add_paragraph()
+    _add_run(para, text, size=12, bold=True, color=CLR_BLUE)
+    _set_spacing(para, before=10, after=2)
+    pPr = para._p.get_or_add_pPr()
+    pBdr = OxmlElement('w:pBdr')
+    bottom = OxmlElement('w:bottom')
+    bottom.set(qn('w:val'), 'single')
+    bottom.set(qn('w:sz'), '6')
+    bottom.set(qn('w:color'), '1F6FB2')
+    bottom.set(qn('w:space'), '1')
+    pBdr.append(bottom)
+    pPr.append(pBdr)
+    return para
+
+
+def _is_real_summary(text: str) -> bool:
+    if not text or not text.strip():
+        return False
+    return len(text.strip()) >= 40
+
+
+def _add_detail_to_cell(cell, detail):
+    p = cell.add_paragraph()
+    _add_run(p, '• ', size=10)
+    _add_run(p, detail, size=10)
+    _set_spacing(p, before=0, after=0, line=13)
+    p.paragraph_format.left_indent = Cm(0.3)
+
+
+def build_cv_document(data, lang):
+    """Build a complete CV document using pure python-docx."""
+    doc = DocxDocument()
+
+    for section in doc.sections:
+        section.top_margin = Cm(1.5)
+        section.bottom_margin = Cm(1.5)
+        section.left_margin = Cm(1.8)
+        section.right_margin = Cm(1.8)
+
     pi = data['personal_info']
 
-    # ── Education entries ─────────────────────
-    edu_entries = []
-    for edu in data.get('education', []):
-        if not (edu.get('degree') or edu.get('school')):
-            continue
-        edu_entries.append({
-            'period': edu.get('period', ''),
-            'degree': edu.get('degree', ''),
-            'school': edu.get('school', ''),
-            'details': [d for d in edu.get('details', []) if d and d.strip()],
-        })
+    # ── HEADER: Logo + Name + Contact ─────────
+    header_table = doc.add_table(rows=1, cols=2)
+    _remove_borders(header_table)
+    _set_table_col_widths(header_table, [3.0, 14.0])
 
-    # ── Experience entries ────────────────────
-    exp_entries = []
-    for exp in data.get('experience', []):
-        if not (exp.get('role') or exp.get('company')):
-            continue
-        exp_entries.append({
-            'period': exp.get('period', ''),
-            'role': exp.get('role', ''),
-            'company': exp.get('company', ''),
-            'details': [d for d in exp.get('details', []) if d and d.strip()],
-        })
+    logo_cell = header_table.cell(0, 0)
+    logo_para = logo_cell.paragraphs[0]
+    logo_path = pi.get('photo_path', DEFAULT_PHOTO)
+    if logo_path and os.path.exists(logo_path):
+        try:
+            logo_para.add_run().add_picture(logo_path, width=Cm(2.5))
+        except Exception as e:
+            print(f"Logo load warning: {e}")
 
-    # ── Skills ────────────────────────────────
+    info_cell = header_table.cell(0, 1)
+    name_para = info_cell.paragraphs[0]
+    _add_run(name_para, pi.get('name', ''), size=18, bold=True, color=CLR_BLUE)
+    _set_spacing(name_para, after=1)
+
+    title_para = info_cell.add_paragraph()
+    _add_run(title_para, (pi.get('title') or '').upper(), size=12, bold=True, color=CLR_BLUE)
+    _set_spacing(title_para, after=3)
+
+    contact_para = info_cell.add_paragraph()
+    phone = pi.get('phone', '')
+    email = pi.get('email', '')
+    contact_parts = []
+    if phone:
+        contact_parts.append(f'Tél : {phone}')
+    if email:
+        contact_parts.append(f'Email : {email}')
+    _add_run(contact_para, '\n'.join(contact_parts), size=11)
+    _set_spacing(contact_para, after=0)
+
+    # ── Summary ───────────────────────────────
+    summary = pi.get('summary', '')
+    if _is_real_summary(summary):
+        sum_para = doc.add_paragraph()
+        _add_run(sum_para, summary, size=11, italic=True, color=CLR_GREY)
+        _set_spacing(sum_para, before=6, after=4)
+
+    # ── SKILLS (grouped, comma-separated) ─────
     skills = [s for s in data.get('skills', []) if s and s.strip()]
+    if skills:
+        skills_title = 'COMPETENCES PROFESSIONNELLES' if lang != 'en' else 'PROFESSIONAL SKILLS'
+        _add_section_heading(doc, skills_title)
 
-    # ── Build context ─────────────────────────
-    context = {
-        'name':       pi.get('name', ''),
-        'title':      (pi.get('title') or '').upper(),
-        'email':      pi.get('email', ''),
-        'phone':      pi.get('phone', ''),
-        'location':   pi.get('location', ''),
-        'summary':    pi.get('summary', ''),
-        # Section headings
-        'education_title':  ('FORMATION - CERTIFICATION'
-                             if lang != 'en' else 'EDUCATION - CERTIFICATION'),
-        'skills_title':     'COMPETENCES' if lang != 'en' else 'SKILLS',
-        'experience_title': ('EXPÉRIENCES PROFESSIONNELLES'
-                             if lang != 'en' else 'PROFESSIONAL EXPERIENCE'),
-        # Section data
-        'education':  edu_entries,
-        'skills':     skills,
-        'experience': exp_entries,
-    }
+        grouped = group_skills(skills, lang)
+        for category, skill_str in grouped.items():
+            p = doc.add_paragraph()
+            _add_run(p, f'• {category} : ', size=11, bold=True)
+            _add_run(p, skill_str, size=11)
+            _set_spacing(p, before=1, after=2, line=14)
+            p.paragraph_format.left_indent = Cm(0.3)
 
-    doc.render(context)
+    # ── EXPERIENCE (two-column table) ─────────
+    experiences = [
+        exp for exp in data.get('experience', [])
+        if (exp.get('role') and exp['role'].strip()) or (exp.get('company') and exp['company'].strip())
+    ]
+    if experiences:
+        exp_title = 'EXPÉRIENCES PROFESSIONNELLES' if lang != 'en' else 'PROFESSIONAL EXPERIENCE'
+        _add_section_heading(doc, exp_title)
+
+        exp_table = doc.add_table(rows=len(experiences), cols=2)
+        _remove_borders(exp_table)
+        _set_table_col_widths(exp_table, [3.5, 13.3])
+
+        for i, exp in enumerate(experiences):
+            period = exp.get('period', '')
+            role = exp.get('role', '')
+            company = exp.get('company', '')
+            details = [d for d in exp.get('details', []) if d and d.strip()]
+
+            left_cell = exp_table.cell(i, 0)
+            left_para = left_cell.paragraphs[0]
+            _add_run(left_para, period, size=11, bold=True, color=CLR_BLUE)
+            _set_spacing(left_para, before=4, after=1)
+
+            if company:
+                comp_para = left_cell.add_paragraph()
+                _add_run(comp_para, company, size=11)
+                _set_spacing(comp_para, before=0, after=2)
+
+            right_cell = exp_table.cell(i, 1)
+            role_para = right_cell.paragraphs[0]
+            _add_run(role_para, role, size=11, bold=True)
+            _set_spacing(role_para, before=4, after=2)
+
+            for detail in details:
+                _add_detail_to_cell(right_cell, detail)
+
+    # ── EDUCATION (two-column table) ──────────
+    education = [
+        edu for edu in data.get('education', [])
+        if (edu.get('degree') and edu['degree'].strip()) or (edu.get('school') and edu['school'].strip())
+    ]
+    if education:
+        edu_title = 'FORMATIONS ET DIPLÔMES' if lang != 'en' else 'EDUCATION'
+        _add_section_heading(doc, edu_title)
+
+        edu_table = doc.add_table(rows=len(education), cols=2)
+        _remove_borders(edu_table)
+        _set_table_col_widths(edu_table, [3.5, 13.3])
+
+        for i, edu in enumerate(education):
+            period = edu.get('period', '')
+            degree = edu.get('degree', '')
+            school = edu.get('school', '')
+            details = [d for d in edu.get('details', []) if d and d.strip()]
+
+            left_cell = edu_table.cell(i, 0)
+            left_para = left_cell.paragraphs[0]
+            _add_run(left_para, period, size=11, bold=True, color=CLR_BLUE)
+            _set_spacing(left_para, before=4, after=1)
+
+            if school:
+                school_para = left_cell.add_paragraph()
+                _add_run(school_para, school, size=11)
+                _set_spacing(school_para, before=0, after=2)
+
+            right_cell = edu_table.cell(i, 1)
+            degree_para = right_cell.paragraphs[0]
+            _add_run(degree_para, degree, size=11, bold=True)
+            _set_spacing(degree_para, before=4, after=2)
+
+            for detail in details:
+                _add_detail_to_cell(right_cell, detail)
+
     return doc
 
 
@@ -295,30 +535,30 @@ def index():
     return render_template('index.html')
 
 EXTRACTION_PROMPT = """\
-Extract data from this CV into the JSON structure below. \
+Extract ALL data from this CV into the JSON structure below. \
 Respond in {lang_instruction} and translate content to that language if needed.
-If a field is missing, use null. Do not shorten or summarize descriptions.
+If a field is missing, use null.
 
-Rules:
-- For "skills": respect the original structure of the CV. If skills are grouped \
-together on one line or under a category, keep them as a single item. Do not \
-break apart what the CV presents as one logical entry.
-- For all arrays: preserve the level of detail from the original. Do not split \
-one sentence into multiple items, and do not merge separate entries into one.
+IMPORTANT RULES:
+1. **PRESERVE ALL INFORMATION**: Do NOT summarize, shorten, or omit any details. \
+Extract every bullet point, every skill, every responsibility exactly as written.
+2. **SKILLS**: Extract all skills mentioned. Keep the original grouping if present.
+3. **EXPERIENCE DETAILS**: Include ALL bullet points and responsibilities for each role.
+4. **EDUCATION DETAILS**: Include all certifications, coursework, honors, and details.
+5. **PERIOD FORMAT**: Use "MM/YYYY - MM/YYYY" or "YYYY - YYYY" as shown in the CV.
 
 Structure:
 {{
   "personal_info": {{ "name": "", "title": "", "email": "", "phone": "", "location": "", "summary": "" }},
   "education": [ {{ "period": "YYYY - YYYY", "degree": "", "school": "", "details": [""] }} ],
-  "skills": ["skill or skill group 1", "skill or skill group 2"],
-  "experience": [ {{ "period": "Month Year - Month Year", "role": "", "company": "", "details": [""] }} ]
+  "skills": ["skill1", "skill2", "..."],
+  "experience": [ {{ "period": "MM/YYYY - MM/YYYY", "role": "", "company": "", "details": ["detail1", "detail2", "..."] }} ]
 }}
 Return ONLY valid JSON.
 """
 
 
 def _call_openai_text(raw_text: str, target_lang: str) -> dict:
-    """Send extracted text to GPT-4o-mini and return structured CV data."""
     lang_instruction = 'English' if target_lang == 'en' else 'French'
     prompt = EXTRACTION_PROMPT.format(lang_instruction=lang_instruction)
 
@@ -361,22 +601,17 @@ skills, experience. Only list the ones that are actually missing or empty.
 3. "suggestions" — an array of objects, one per missing or empty field for \
 which you can propose useful content. Each object must have:
   - "field": the field name (e.g. "title", "summary", "location", "skills")
-  - "label": a short human-readable label for what this field is \
-(e.g. "Professional Title", "Profile Summary"). Write in {lang_instruction}.
-  - "value": your proposed content for that field. For text fields provide a \
-string. For "skills" provide a comma-separated string of skills.
+  - "label": a short human-readable label for what this field is. Write in {lang_instruction}.
+  - "value": your proposed content for that field.
 IMPORTANT: if the CV's "summary" field in personal_info is empty, you MUST \
-include a suggestion for it. The suggested summary should be a 1-2 line \
-professional profile description. Do NOT mention the candidate's name in it. \
-Focus on their expertise, role, and key strengths.
+include a suggestion for it.
 Only include suggestions where you can infer reasonable content from the rest \
 of the CV. If nothing is missing or you cannot infer a value, return an empty list.
 
 4. "compact_skills" — look at the "skills" array. If the skills are already \
-compact (short phrases, keyword-style entries like "Python", "Project Management", \
-"Docker, Kubernetes"), set this to null. But if any skill entry is a long \
-sentence or paragraph (more than ~8 words), rewrite ALL the skills as a clean, \
-compact, professional keyword-style list. Group related skills logically. \
+compact (short phrases, keyword-style entries), set this to null. But if any \
+skill entry is a long sentence or paragraph (more than ~8 words), rewrite ALL \
+the skills as a clean, compact, professional keyword-style list. \
 Write in {lang_instruction}. If null, omit the key or set to null.
 
 CV Data:
@@ -387,10 +622,7 @@ Return ONLY valid JSON matching the structure above.
 
 
 def _call_openai_analysis(cv_data: dict, target_lang: str) -> dict:
-    """Analyse extracted CV data and return summary, missing fields,
-    suggestions, and optionally compact skills."""
     lang_instruction = 'English' if target_lang == 'en' else 'French'
-    # Remove photo_path from data sent to LLM (not useful for analysis)
     send_data = copy.deepcopy(cv_data)
     send_data.get('personal_info', {}).pop('photo_path', None)
 
@@ -414,7 +646,6 @@ def _call_openai_analysis(cv_data: dict, target_lang: str) -> dict:
     except json.JSONDecodeError:
         result = {"candidate_overview": "", "missing_fields": [], "suggestions": [], "compact_skills": None}
 
-    # Normalise keys
     result.setdefault("candidate_overview", "")
     result.setdefault("missing_fields", [])
     result.setdefault("suggestions", [])
@@ -423,23 +654,17 @@ def _call_openai_analysis(cv_data: dict, target_lang: str) -> dict:
 
 
 def _process_cv_job(job_id: str, cv_path: str, ext: str):
-    """Background worker: runs extraction + analysis and stores result in jobs dict."""
     try:
         raw_text = extract_text(cv_path)
         target_lang = detect_language(raw_text)
         extracted_data = _call_openai_text(raw_text, target_lang)
 
-        # Photo: use default bundled photo
         extracted_data['personal_info']['photo_path'] = DEFAULT_PHOTO
         extracted_data['language'] = target_lang
 
-        # If summary is missing, leave it empty — the analysis call
-        # will flag it as a missing field and suggest content the user
-        # can accept or dismiss.
         if not extracted_data['personal_info'].get('summary'):
             extracted_data['personal_info']['summary'] = ''
 
-        # ── Second LLM call: CV analysis ──────────────
         try:
             analysis = _call_openai_analysis(extracted_data, target_lang)
         except Exception as e:
@@ -462,12 +687,6 @@ def _process_cv_job(job_id: str, cv_path: str, ext: str):
 @app.route('/parse-cv', methods=['POST'])
 @login_required
 def parse_cv():
-    """Upload a CV, validate it, kick off background processing, return job_id.
-
-    The actual LLM calls run in a background thread so the HTTP response
-    returns immediately (avoids platform proxy timeouts).
-    Poll GET /job-status/<job_id> for results.
-    """
     if 'cv_file' not in request.files:
         return jsonify({"error": "Missing CV file"}), 400
 
@@ -499,19 +718,18 @@ def parse_cv():
 @app.route('/job-status/<job_id>')
 @login_required
 def job_status(job_id):
-    """Poll this endpoint to get background job results."""
     job = jobs.get(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
 
     if job["status"] == "done":
         result = job["result"]
-        del jobs[job_id]  # cleanup
+        del jobs[job_id]
         return jsonify({"status": "done", "result": result})
 
     if job["status"] == "error":
         err = job["error"]
-        del jobs[job_id]  # cleanup
+        del jobs[job_id]
         return jsonify({"status": "error", "error": err}), 500
 
     return jsonify({"status": "processing"})
@@ -520,14 +738,12 @@ def job_status(job_id):
 @app.route('/generate-docx', methods=['POST'])
 @login_required
 def generate_docx():
-    """Receive final JSON, anonymize, build Word document, return .docx."""
     data = request.json
 
     try:
         data = ensure_schema(data)
         lang = data.get('language', 'fr')
 
-        # Filter empty entries
         data['skills'] = [s for s in data.get('skills', []) if s and s.strip()]
         data['experience'] = [
             exp for exp in data.get('experience', [])
@@ -542,13 +758,11 @@ def generate_docx():
         for edu in data['education']:
             edu['details'] = [d for d in edu.get('details', []) if d and d.strip()]
 
-        # Anonymize personal info for the output document
         anon_data = anonymize_data(data)
 
-        # Build Word document from template
-        doc = build_cv_from_template(anon_data, lang)
+        # Build Word document directly (no template)
+        doc = build_cv_document(anon_data, lang)
 
-        # Derive filename from anonymized initials
         anon_name = anon_data['personal_info'].get('name', 'CV')
         clean_name = ''.join(c for c in anon_name if c.isalnum() or c in (' ', '_')).strip().replace(' ', '_')
         filename = f"CV_{clean_name}.docx" if clean_name else "generated_cv.docx"
