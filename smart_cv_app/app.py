@@ -5,6 +5,7 @@ import secrets
 import copy
 import threading
 import uuid
+import traceback
 from functools import wraps
 from flask import Flask, request, jsonify, send_file, render_template, session, redirect, url_for
 from werkzeug.utils import secure_filename
@@ -156,11 +157,20 @@ def ensure_schema(data):
     data = data or {}
     pi = data.get('personal_info', {})
     for key in ['name', 'title', 'email', 'phone', 'location', 'summary', 'photo_path']:
-        if key == 'photo_path':
-            pi.setdefault(key, DEFAULT_PHOTO)
-        else:
-            pi.setdefault(key, '')
+        # If key is missing OR explicitly null, fill with defaults
+        if pi.get(key) is None:
+            if key == 'photo_path':
+                pi[key] = DEFAULT_PHOTO
+            else:
+                pi[key] = ''
     data['personal_info'] = pi
+    # If these keys exist but are null, normalize to empty lists
+    if data.get('education') is None:
+        data['education'] = []
+    if data.get('skills') is None:
+        data['skills'] = []
+    if data.get('experience') is None:
+        data['experience'] = []
     data.setdefault('education', [])
     data.setdefault('skills', [])
     data.setdefault('experience', [])
@@ -220,7 +230,7 @@ def anonymize_data(data):
     pi = anon.get('personal_info', {})
 
     # Name → initials (e.g. "Ousmane SY" → "O. S.")
-    name = pi.get('name', '').strip()
+    name = (pi.get('name') or '').strip()
     if name:
         parts = [p.strip() for p in name.split() if p.strip()]
         if len(parts) >= 2:
@@ -774,6 +784,7 @@ def generate_docx():
 
     except Exception as e:
         print(f"DOCX Gen Error: {e}")
+        print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 
